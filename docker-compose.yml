@@ -1,0 +1,15 @@
+services:
+  recipe-box:
+    build: .
+    container_name: recipe-box
+    restart: unless-stopped
+    ports:
+      # Loopback only by default; put your own reverse proxy or VPN in
+      # front for remote access. To listen on a LAN address, add e.g.
+      # - "192.168.1.10:13002:8080"
+      - "127.0.0.1:13002:8080"
+    volumes:
+      - recipe-box-data:/app/data
+
+volumes:
+  recipe-box-data:

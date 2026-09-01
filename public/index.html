@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#ad3e2f">
+    <meta name="description" content="A private recipe library, cooking journal, meal planner, and Kitchen Stock tracker.">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Recipe Box">
+    <title>Recipe Box</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="grain" aria-hidden="true"></div>
+    <header class="site-header">
+      <a class="brand" href="#top" data-view-link="recipes" aria-label="Recipe Box home">
+        <span class="brand-mark" aria-hidden="true">RB</span>
+        <span>
+          <strong>Recipe Box</strong>
+          <small>Cook · remember · repeat</small>
+        </span>
+      </a>
+      <nav class="header-actions" aria-label="App actions">
+        <button class="button button-quiet timer-button" id="timerButton" type="button" hidden>Timers <span id="timerCount">0</span></button>
+        <button class="icon-button" id="settingsButton" type="button" aria-label="Recipe Box settings" title="Recipe Box settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.83 2.83-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-4v-.07a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.83-2.83.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3.07 14H3v-4h.07A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.83-2.83.06.06A1.7 1.7 0 0 0 9 4.63 1.7 1.7 0 0 0 10 3.07V3h4v.07a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.83 2.83-.06.06A1.7 1.7 0 0 0 19.4 9 1.7 1.7 0 0 0 20.93 10H21v4h-.07A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+        </button>
+        <button class="button button-quiet install-button" id="installButton" type="button" hidden>Install</button>
+        <button class="button button-ink" id="addButton" type="button">Add recipe</button>
+      </nav>
+    </header>
+
+    <nav class="view-nav" aria-label="Recipe Box sections">
+      <button class="view-tab active" type="button" data-view="recipes">Recipes</button>
+      <button class="view-tab" type="button" data-view="stock">Kitchen Stock <span class="nav-badge" id="stockBadge">0</span></button>
+      <button class="view-tab" type="button" data-view="planner">Meal plan</button>
+      <button class="view-tab" type="button" data-view="history">Made it</button>
+      <button class="view-tab" type="button" data-view="shopping">Shopping list <span class="nav-badge" id="shoppingBadge">0</span></button>
+    </nav>
+
+    <main id="top">
+      <section class="app-view active" id="recipesView" data-app-view="recipes">
+        <section class="hero" aria-labelledby="heroTitle">
+          <div class="hero-copy">
+            <p class="eyebrow"><span id="recipeCount">0</span> recipes in your collection</p>
+            <h1 id="heroTitle">What sounds <em>good tonight?</em></h1>
+            <p class="hero-deck">Recipes for two, with just enough left for tomorrow.</p>
+            <label class="search-box" for="searchInput">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/></svg>
+              <input id="searchInput" type="search" placeholder="Search recipes, ingredients, tags…" autocomplete="off">
+              <kbd>/</kbd>
+            </label>
+            <div class="status-line" role="status">
+              <span class="status-dot" id="statusDot"></span>
+              <span id="connectionStatus">Private recipe library online</span>
+            </div>
+          </div>
+          <div class="hero-feature-wrap">
+            <button class="hero-feature" id="heroFeature" type="button" aria-label="Open suggested recipe">
+              <img id="heroImage" src="/images/dishes/garlic-butter-filet.webp" alt="">
+              <span class="photo-wash" aria-hidden="true"></span>
+              <span class="hero-ticket">
+                <small>Tonight’s suggestion</small>
+                <strong id="heroRecipeTitle">Garlic-Butter Filet</strong>
+                <span id="heroRecipeMeta">40 min · serves 3</span>
+              </span>
+            </button>
+            <button class="suggest-again" id="suggestAgainButton" type="button">Give me another idea →</button>
+          </div>
+        </section>
+
+        <section class="quick-stats" aria-label="Recipe Box summary">
+          <div><strong id="madeTotal">0</strong><span>meals made</span></div>
+          <div><strong id="triedTotal">0</strong><span>recipes tried</span></div>
+          <div><strong id="favoriteTotal">0</strong><span>favorites</span></div>
+          <div><strong id="plannedTotal">0</strong><span>planned this week</span></div>
+        </section>
+
+        <section class="library" aria-labelledby="libraryTitle">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Your recipes</p>
+              <h2 id="libraryTitle">The collection</h2>
+            </div>
+            <div class="library-tools">
+              <label class="compact-select">Sort
+                <select id="sortSelect">
+                  <option value="recommended">Recommended</option>
+                  <option value="title">A–Z</option>
+                  <option value="quick">Quickest</option>
+                  <option value="recent">Recently viewed</option>
+                  <option value="least-made">Make something new</option>
+                </select>
+              </label>
+              <div class="view-stamp" aria-hidden="true">PERSONAL<br>EDITION<br>08·2026</div>
+            </div>
+          </div>
+          <div class="filter-row" id="filterRow" aria-label="Filter recipes">
+            <button class="filter active" type="button" data-category="">All</button>
+            <button class="filter" type="button" data-category="Beef">Beef</button>
+            <button class="filter" type="button" data-category="Chicken">Chicken</button>
+            <button class="filter" type="button" data-category="Seafood">Seafood</button>
+            <button class="filter" type="button" data-category="Prepared">Prepared</button>
+            <button class="filter" type="button" data-category="Breakfast">Breakfast</button>
+            <button class="filter" type="button" data-category="favorites">Favorites</button>
+          </div>
+          <div class="recipe-grid" id="recipeGrid" aria-live="polite"></div>
+          <div class="empty-state" id="emptyState" hidden>
+            <span>No recipes found.</span>
+            <p>Try a different ingredient or clear the filter.</p>
+            <button class="button button-ink" id="clearFilters" type="button">Show every recipe</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="app-view utility-view" id="stockView" data-app-view="stock" hidden>
+        <div class="tool-heading">
+          <div><p class="eyebrow">Fridge · pantry · freezer</p><h1>Kitchen Stock</h1><p>Scan what comes in, subtract what you use, and ask your assistant what is on hand.</p></div>
+          <div class="heading-actions"><button class="button button-quiet" id="scanStockButton" type="button">Scan barcode</button><button class="button button-red" id="addStockButton" type="button">Add item</button></div>
+        </div>
+        <div class="stock-summary" id="stockSummary"></div>
+        <div class="utility-toolbar">
+          <label class="small-search"><span>Search</span><input id="stockSearch" type="search" placeholder="Milk, pasta, 012345…"></label>
+          <div class="filter-row stock-filters" id="stockFilters">
+            <button class="filter active" type="button" data-location="">All</button>
+            <button class="filter" type="button" data-location="Fridge">Fridge</button>
+            <button class="filter" type="button" data-location="Pantry">Pantry</button>
+            <button class="filter" type="button" data-location="Freezer">Freezer</button>
+            <button class="filter" type="button" data-location="low">Low / out</button>
+          </div>
+        </div>
+        <div class="stock-grid" id="stockGrid"></div>
+        <div class="empty-state" id="stockEmpty" hidden><span>Nothing recorded here yet.</span><p>Scan a barcode or add an item by hand.</p></div>
+      </section>
+
+      <section class="app-view utility-view" id="plannerView" data-app-view="planner" hidden>
+        <div class="tool-heading">
+          <div><p class="eyebrow">Seven easy decisions</p><h1>Meal plan</h1><p>Set dinner for the week. Plans stay in this browser and work offline.</p></div>
+          <div class="heading-actions"><button class="button button-quiet" id="previousWeekButton" type="button">← Previous</button><button class="button button-quiet" id="thisWeekButton" type="button">This week</button><button class="button button-quiet" id="nextWeekButton" type="button">Next →</button></div>
+        </div>
+        <h2 class="week-title" id="weekTitle"></h2>
+        <div class="planner-grid" id="plannerGrid"></div>
+      </section>
+
+      <section class="app-view utility-view" id="historyView" data-app-view="history" hidden>
+        <div class="tool-heading"><div><p class="eyebrow">Your cooking journal</p><h1>Made it</h1><p>Dates, ratings, notes, and the dishes worth repeating.</p></div></div>
+        <div class="history-stats" id="historyStats"></div>
+        <div class="history-list" id="historyList"></div>
+        <div class="empty-state" id="historyEmpty" hidden><span>Your first dinner goes here.</span><p>Open any recipe and tap “I made this.”</p></div>
+      </section>
+
+      <section class="app-view utility-view" id="shoppingView" data-app-view="shopping" hidden>
+        <div class="tool-heading">
+          <div><p class="eyebrow">A list that stays with you</p><h1>Shopping list</h1><p>Add ingredients from recipes or jot down anything else.</p></div>
+          <button class="button button-quiet" id="clearCheckedButton" type="button">Clear checked</button>
+        </div>
+        <form class="shopping-add" id="shoppingForm"><input id="shoppingInput" required placeholder="Add an item…"><button class="button button-red" type="submit">Add</button></form>
+        <div class="shopping-list" id="shoppingList"></div>
+        <div class="empty-state" id="shoppingEmpty" hidden><span>Your list is clear.</span><p>Add an item here or send recipe ingredients from a recipe card.</p></div>
+      </section>
+    </main>
+
+    <footer><p>Recipe Box · private on your network</p><p>Recipes, plans, Kitchen Stock, and a little tomorrow.</p></footer>
+
+    <dialog class="recipe-dialog" id="recipeDialog">
+      <article class="recipe-sheet">
+        <button class="dialog-close" data-close="recipeDialog" type="button" aria-label="Close recipe">×</button>
+        <div class="recipe-cover"><img id="detailImage" alt=""><span class="cover-number" id="detailNumber">01</span></div>
+        <div class="recipe-content">
+          <p class="eyebrow" id="detailKicker"></p>
+          <h2 id="detailTitle"></h2>
+          <p class="detail-summary" id="detailSummary"></p>
+          <div class="recipe-facts" id="detailFacts"></div>
+          <div class="serving-control" aria-label="Adjust servings"><span>Servings</span><button id="servingsDown" type="button" aria-label="Fewer servings">−</button><strong id="servingsValue">3</strong><button id="servingsUp" type="button" aria-label="More servings">+</button></div>
+          <div class="detail-actions"><button class="button button-red" id="cookModeButton" type="button">Start Cook Mode</button><button class="button button-ink" id="logMadeButton" type="button">I made this</button><button class="button button-quiet" id="favoriteButton" type="button">Favorite</button></div>
+          <div class="recipe-utilities"><button id="addIngredientsButton" type="button">+ Shopping list</button><button id="planRecipeButton" type="button">+ Meal plan</button><button id="shareRecipeButton" type="button">Share</button><button id="printRecipeButton" type="button">Print</button></div>
+          <section class="cook-console" id="cookConsole" hidden>
+            <div><p class="eyebrow">Cook Mode</p><h3>Stay on step. Keep time.</h3></div>
+            <div class="cook-step-bar">
+              <button class="cook-nav-button" id="cookPrevButton" type="button">← Back</button>
+              <div class="cook-step-status"><strong id="cookStepLabel">Step 1 of 1</strong><button class="step-timer-chip" id="cookStepTimer" type="button" hidden></button></div>
+              <button class="cook-nav-button" id="cookNextButton" type="button">Next step →</button>
+            </div>
+            <p class="cook-hint">← → keys move between steps. Timer chips start a countdown for that step.</p>
+            <form class="quick-timer-form" id="quickTimerForm"><input id="timerNameInput" placeholder="Timer name" value="Recipe timer"><input id="timerMinutesInput" type="number" min="1" max="600" value="10" aria-label="Timer minutes"><button class="button button-red" type="submit">Start timer</button></form>
+            <button class="button button-ink finish-cooking" id="finishCookingButton" type="button">Finish cooking</button>
+          </section>
+          <div class="recipe-columns">
+            <section><h3>What you need</h3><ul class="ingredient-list" id="ingredientList"></ul></section>
+            <section><h3>What to do</h3><ol class="step-list" id="stepList"></ol></section>
+          </div>
+          <aside class="leftover-note" id="leftoverNote"></aside>
+          <div class="recipe-notes" id="recipeNotes"></div>
+          <section class="recipe-history"><div class="subheading"><h3>Last made</h3><button id="viewAllHistoryButton" type="button">View journal →</button></div><div id="recipeHistory"></div></section>
+        </div>
+      </article>
+    </dialog>
+
+    <dialog class="form-dialog" id="addDialog">
+      <form class="form-sheet" id="recipeForm" method="dialog">
+        <button class="dialog-close" data-close="addDialog" type="button" aria-label="Close form">×</button>
+        <p class="eyebrow">A new card for the box</p><h2>Add a recipe</h2>
+        <details class="quick-fill" id="quickFill" open>
+          <summary>Quick fill — import from a URL or paste recipe text</summary>
+          <div class="quick-fill-url">
+            <input id="importUrlInput" type="url" inputmode="url" placeholder="https://your-favorite-site.com/recipe" autocomplete="off">
+            <button class="button button-quiet" id="importUrlButton" type="button">Import</button>
+          </div>
+          <textarea id="pasteRecipeInput" rows="6" placeholder="Or paste a whole recipe here — title, ingredients, and instructions copied from anywhere."></textarea>
+          <button class="button button-quiet" id="parsePasteButton" type="button">Fill form from pasted text</button>
+          <p class="form-error" id="quickFillError" role="alert"></p>
+        </details>
+        <p class="form-intro">Use Quick fill above, or write it by hand: one line per ingredient and step. Write ingredients as <code>1 cup | rice</code>.</p>
+        <div class="field-grid">
+          <label class="field field-wide">Recipe title<input name="title" required maxlength="140"></label>
+          <label class="field field-wide">Short description<textarea name="summary" rows="2" maxlength="600"></textarea></label>
+          <label class="field">Main ingredient<input name="mainIngredient" maxlength="160"></label>
+          <label class="field">Category<select name="category"><option>Beef</option><option>Chicken</option><option>Seafood</option><option>Prepared</option><option>Breakfast</option><option>Vegetarian</option><option>Other</option></select></label>
+          <label class="field">Prep minutes<input name="prepMinutes" type="number" min="0" value="10"></label>
+          <label class="field">Cook minutes<input name="cookMinutes" type="number" min="0" value="20"></label>
+          <label class="field">Servings<input name="servings" type="number" min="1" step="1" value="3"></label>
+          <label class="field">Tags<input name="tags" placeholder="quick, skillet, comfort food"></label>
+          <label class="field field-wide">Ingredients<textarea name="ingredients" rows="7" required placeholder="1 lb | ground beef&#10;1 tsp | cumin"></textarea></label>
+          <label class="field field-wide">Steps<textarea name="steps" rows="8" required placeholder="Brown the beef in a wide skillet.&#10;Add the spices and simmer."></textarea></label>
+          <label class="field field-wide">Leftover note<textarea name="leftoverNote" rows="2"></textarea></label>
+        </div>
+        <p class="form-error" id="formError" role="alert"></p>
+        <div class="form-actions"><button class="button button-quiet" data-close="addDialog" type="button">Cancel</button><button class="button button-red" type="submit">Add recipe</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="form-dialog compact-dialog" id="madeDialog">
+      <form class="form-sheet" id="madeForm" method="dialog">
+        <button class="dialog-close" data-close="madeDialog" type="button" aria-label="Close form">×</button>
+        <p class="eyebrow">Cooking journal</p><h2>I made this</h2><p id="madeRecipeTitle" class="form-intro"></p>
+        <div class="field-grid">
+          <label class="field">Date<input id="madeDate" name="madeAt" type="date" required></label>
+          <fieldset class="rating-field"><legend>Rating</legend><div id="ratingPicker"><button type="button" data-rating="1">★</button><button type="button" data-rating="2">★</button><button type="button" data-rating="3">★</button><button type="button" data-rating="4">★</button><button type="button" data-rating="5">★</button></div></fieldset>
+          <label class="field field-wide">Notes<textarea name="notes" rows="4" placeholder="What worked? What would you change?"></textarea></label>
+          <label class="check-field field-wide"><input id="deductStock" name="deductStock" type="checkbox"><span>Subtract one unit from clearly matching Kitchen Stock items</span></label>
+        </div>
+        <input id="madeRating" name="rating" type="hidden" value="0"><p class="form-error" id="madeError" role="alert"></p>
+        <div class="form-actions"><button class="button button-quiet" data-close="madeDialog" type="button">Cancel</button><button class="button button-red" type="submit">Save to journal</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="form-dialog" id="stockDialog">
+      <form class="form-sheet" id="stockForm" method="dialog">
+        <button class="dialog-close" data-close="stockDialog" type="button" aria-label="Close form">×</button>
+        <p class="eyebrow">Kitchen Stock</p><h2 id="stockDialogTitle">Add an item</h2><input name="id" type="hidden">
+        <div class="barcode-entry"><label class="field">Barcode<input name="barcode" inputmode="numeric" autocomplete="off"></label><button class="button button-quiet" id="scanFromFormButton" type="button">Scan</button><button class="button button-quiet" id="lookupBarcodeButton" type="button">Look up</button></div>
+        <p class="lookup-status" id="lookupStatus"></p>
+        <div class="field-grid">
+          <label class="field field-wide">Item name<input name="name" required maxlength="180"></label>
+          <label class="field">Brand<input name="brand" maxlength="140"></label>
+          <label class="field">Category<input name="category" maxlength="80"></label>
+          <label class="field">Quantity<input name="quantity" type="number" min="0" step="0.25" value="1" required></label>
+          <label class="field">Unit<input name="unit" value="item" placeholder="item, lb, bottle…"></label>
+          <label class="field">Location<select name="location"><option>Fridge</option><option selected>Pantry</option><option>Freezer</option><option>Other</option></select></label>
+          <label class="field">Low when at<input name="lowAt" type="number" min="0" step="0.25" value="0"></label>
+          <label class="field">Best by<input name="expirationDate" type="date"></label>
+          <label class="field field-wide">Notes<textarea name="notes" rows="3"></textarea></label>
+        </div>
+        <p class="form-error" id="stockError" role="alert"></p>
+        <div class="form-actions"><button class="button button-quiet danger-button" id="deleteStockButton" type="button" hidden>Delete</button><span class="form-spacer"></span><button class="button button-quiet" data-close="stockDialog" type="button">Cancel</button><button class="button button-red" type="submit">Save item</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="form-dialog scanner-dialog" id="scannerDialog">
+      <section class="form-sheet">
+        <button class="dialog-close" data-close="scannerDialog" type="button" aria-label="Close scanner">×</button>
+        <p class="eyebrow">Kitchen Stock</p><h2>Scan a barcode</h2>
+        <p class="form-intro">Camera access needs HTTPS or localhost. You can also choose a photo or type the number.</p>
+        <div id="barcodeReader"></div>
+        <form class="manual-barcode" id="manualBarcodeForm"><label class="field">Barcode number<input id="manualBarcodeInput" inputmode="numeric" autocomplete="off" required></label><button class="button button-red" type="submit">Use barcode</button></form>
+        <p class="form-error" id="scannerError" role="alert"></p>
+      </section>
+    </dialog>
+
+    <dialog class="form-dialog compact-dialog" id="planDialog">
+      <form class="form-sheet" id="planForm" method="dialog">
+        <button class="dialog-close" data-close="planDialog" type="button" aria-label="Close planner">×</button>
+        <p class="eyebrow">Meal plan</p><h2>Pick a night</h2><p id="planRecipeTitle" class="form-intro"></p>
+        <div class="field-grid">
+          <label class="field field-wide" id="planRecipeField">Recipe<select id="planRecipeSelect" name="recipeId" required></select></label>
+          <label class="field field-wide">Date<input id="planDate" name="date" type="date" required></label>
+        </div>
+        <div class="form-actions"><button class="button button-quiet" data-close="planDialog" type="button">Cancel</button><button class="button button-red" type="submit">Add to plan</button></div>
+      </form>
+    </dialog>
+
+    <dialog class="settings-dialog" id="settingsDialog">
+      <div class="settings-sheet">
+        <button class="dialog-close" data-close="settingsDialog" type="button" aria-label="Close settings">×</button>
+        <p class="eyebrow">App settings</p><h2>Recipe Box</h2><p>Recipe Box runs on your own server and network — no accounts, no cloud.</p>
+        <h3>Install Recipe Box</h3><p id="installHelp">Open Recipe Box over HTTPS or localhost in your browser to install it as an app.</p>
+        <hr><h3>Backup</h3><p>Export recipes, journal entries, and Kitchen Stock as one JSON file.</p><button class="button button-quiet" id="exportBackupButton" type="button">Export backup</button>
+      </div>
+    </dialog>
+
+    <dialog class="timer-dock" id="timerDock" aria-label="Cooking timers">
+      <header><div><p class="eyebrow">Cook Mode</p><h2>Timers</h2></div><button id="closeTimerDock" type="button" aria-label="Hide timers">×</button></header>
+      <div id="timerList"></div>
+      <form id="dockTimerForm" class="dock-timer-form"><input id="dockTimerName" placeholder="Timer name" value="Kitchen timer"><input id="dockTimerMinutes" type="number" min="1" max="600" value="5" aria-label="Minutes"><button type="submit">Start</button></form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/vendor/html5-qrcode-2.3.8.min.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

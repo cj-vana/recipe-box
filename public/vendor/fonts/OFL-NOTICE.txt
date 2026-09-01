@@ -1,0 +1,5 @@
+Fraunces (fraunces.woff2, fraunces-italic.woff2) and Instrument Sans (instrument-sans.woff2)
+are licensed under the SIL Open Font License 1.1.
+- Fraunces: Copyright 2018 The Fraunces Project Authors (https://github.com/undercasetype/Fraunces)
+- Instrument Sans: Copyright 2022 The Instrument Project Authors (https://github.com/Instrument/instrument-sans)
+Full license text: https://openfontlicense.org

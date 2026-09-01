@@ -1,0 +1,19 @@
+{
+  "name": "recipe-box",
+  "version": "2.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A private recipe library, cooking journal, meal planner, and Kitchen Stock tracker.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cj-vana/recipe-box.git"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

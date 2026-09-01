@@ -1,0 +1,5 @@
+.env
+.DS_Store
+data/runtime/
+node_modules/
+work/
