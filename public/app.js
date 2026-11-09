@@ -1,3 +1,5 @@
+import { friendlyNumber, parseLeadingNumber, scaleAmount } from "./amounts.js";
+
 const STORAGE = {
   favorites: "recipe-box:favorites",
   recipeCache: "recipe-box:recipe-cache",
@@ -283,6 +285,13 @@ function createCard(recipe, index) {
   return card;
 }
 
+function pressFilter(row, pressed) {
+  row.querySelectorAll(".filter").forEach((filter) => {
+    filter.classList.toggle("active", filter === pressed);
+    filter.setAttribute("aria-pressed", String(filter === pressed));
+  });
+}
+
 function renderRecipes() {
   const recipes = filteredRecipes();
   elements.recipeGrid.replaceChildren(...recipes.map(createCard));
@@ -306,34 +315,6 @@ function fact(text) {
   value.className = "fact";
   value.textContent = text;
   return value;
-}
-
-function parseLeadingNumber(value) {
-  const match = String(value).match(/^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)(.*)$/);
-  if (!match) return null;
-  const parts = match[1].split(/\s+/);
-  let number = 0;
-  for (const part of parts) {
-    if (part.includes("/")) {
-      const [top, bottom] = part.split("/").map(Number);
-      number += bottom ? top / bottom : 0;
-    } else number += Number(part);
-  }
-  return { number, rest: match[2] };
-}
-
-function friendlyNumber(value) {
-  const snapped = Math.round(value * 8) / 8;
-  const whole = Math.floor(snapped);
-  const eighths = Math.round((snapped - whole) * 8);
-  const fractions = { 1: "1/8", 2: "1/4", 3: "3/8", 4: "1/2", 5: "5/8", 6: "3/4", 7: "7/8" };
-  if (!eighths) return String(whole);
-  return `${whole ? `${whole} ` : ""}${fractions[eighths]}`;
-}
-
-function scaleAmount(amount, ratio) {
-  const parsed = parseLeadingNumber(amount);
-  return parsed ? `${friendlyNumber(parsed.number * ratio)}${parsed.rest}` : amount;
 }
 
 // Finds a cooking duration in a step ("roast for 25–30 minutes") and returns
@@ -1316,12 +1297,12 @@ function setupEvents() {
     const button = event.target.closest("[data-category]");
     if (!button) return;
     state.category = button.dataset.category;
-    elements.filterRow.querySelectorAll(".filter").forEach((filter) => filter.classList.toggle("active", filter === button));
+    pressFilter(elements.filterRow, button);
     renderRecipes();
   });
   elements.clearFilters.addEventListener("click", () => {
     state.query = ""; state.category = ""; elements.searchInput.value = "";
-    elements.filterRow.querySelectorAll(".filter").forEach((filter, index) => filter.classList.toggle("active", index === 0));
+    pressFilter(elements.filterRow, elements.filterRow.querySelector(".filter"));
     renderRecipes();
   });
   elements.addButton.addEventListener("click", () => elements.addDialog.showModal());
@@ -1388,7 +1369,7 @@ function setupEvents() {
     const button = event.target.closest("[data-location]"); if (!button) return;
     state.stockLowOnly = button.dataset.location === "low";
     state.stockLocation = state.stockLowOnly ? "" : button.dataset.location;
-    elements.stockFilters.querySelectorAll(".filter").forEach((filter) => filter.classList.toggle("active", filter === button));
+    pressFilter(elements.stockFilters, button);
     renderStock();
   });
 

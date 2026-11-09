@@ -1,10 +1,11 @@
-const STATIC_CACHE = "recipe-box-static-v10";
-const DATA_CACHE = "recipe-box-data-v10";
+const STATIC_CACHE = "recipe-box-static-v11";
+const DATA_CACHE = "recipe-box-data-v11";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css",
   "/app.js",
+  "/amounts.js",
   "/vendor/html5-qrcode-2.3.8.min.js",
   "/manifest.webmanifest",
   "/icons/icon.svg",

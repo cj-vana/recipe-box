@@ -99,14 +99,16 @@
               <div class="view-stamp" aria-hidden="true">PERSONAL<br>EDITION<br>08·2026</div>
             </div>
           </div>
-          <div class="filter-row" id="filterRow" aria-label="Filter recipes">
-            <button class="filter active" type="button" data-category="">All</button>
-            <button class="filter" type="button" data-category="Beef">Beef</button>
-            <button class="filter" type="button" data-category="Chicken">Chicken</button>
-            <button class="filter" type="button" data-category="Seafood">Seafood</button>
-            <button class="filter" type="button" data-category="Prepared">Prepared</button>
-            <button class="filter" type="button" data-category="Breakfast">Breakfast</button>
-            <button class="filter" type="button" data-category="favorites">Favorites</button>
+          <div class="filter-row" id="filterRow" role="group" aria-label="Filter recipes">
+            <button class="filter active" type="button" data-category="" aria-pressed="true">All</button>
+            <button class="filter" type="button" data-category="Beef" aria-pressed="false">Beef</button>
+            <button class="filter" type="button" data-category="Chicken" aria-pressed="false">Chicken</button>
+            <button class="filter" type="button" data-category="Seafood" aria-pressed="false">Seafood</button>
+            <button class="filter" type="button" data-category="Prepared" aria-pressed="false">Prepared</button>
+            <button class="filter" type="button" data-category="Breakfast" aria-pressed="false">Breakfast</button>
+            <button class="filter" type="button" data-category="Vegetarian" aria-pressed="false">Vegetarian</button>
+            <button class="filter" type="button" data-category="Other" aria-pressed="false">Other</button>
+            <button class="filter" type="button" data-category="favorites" aria-pressed="false">Favorites</button>
           </div>
           <div class="recipe-grid" id="recipeGrid" aria-live="polite"></div>
           <div class="empty-state" id="emptyState" hidden>
@@ -125,12 +127,12 @@
         <div class="stock-summary" id="stockSummary"></div>
         <div class="utility-toolbar">
           <label class="small-search"><span>Search</span><input id="stockSearch" type="search" placeholder="Milk, pasta, 012345…"></label>
-          <div class="filter-row stock-filters" id="stockFilters">
-            <button class="filter active" type="button" data-location="">All</button>
-            <button class="filter" type="button" data-location="Fridge">Fridge</button>
-            <button class="filter" type="button" data-location="Pantry">Pantry</button>
-            <button class="filter" type="button" data-location="Freezer">Freezer</button>
-            <button class="filter" type="button" data-location="low">Low / out</button>
+          <div class="filter-row stock-filters" id="stockFilters" role="group" aria-label="Filter kitchen stock">
+            <button class="filter active" type="button" data-location="" aria-pressed="true">All</button>
+            <button class="filter" type="button" data-location="Fridge" aria-pressed="false">Fridge</button>
+            <button class="filter" type="button" data-location="Pantry" aria-pressed="false">Pantry</button>
+            <button class="filter" type="button" data-location="Freezer" aria-pressed="false">Freezer</button>
+            <button class="filter" type="button" data-location="low" aria-pressed="false">Low / out</button>
           </div>
         </div>
         <div class="stock-grid" id="stockGrid"></div>
