@@ -229,6 +229,8 @@ function applyProfile(profile) {
   state.favorites = new Set(profile.favorites || []);
   state.planner = normalizePlanner(profile.planner);
   state.shopping = profile.shopping || [];
+  // A recipe opened from a link can be on screen before the profile arrives.
+  updateFavoriteButton();
 }
 
 function toggleFavorite(id) {

@@ -166,6 +166,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
       el.passwordForm.reset();
       el.passwordPanel.open = false;
       renderSettings();
+      el.passwordSummary.focus();
       toast(hadPassword ? "Password changed. Your other devices were signed out." : "Password set. You can now sign in from outside your home network.");
     } catch (error) {
       el.passwordError.textContent = error.message;
@@ -253,11 +254,19 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
         edit.className = "button button-quiet";
         edit.textContent = "Edit";
         edit.setAttribute("aria-label", `Edit ${person.displayName}`);
+        edit.dataset.personId = person.id;
         edit.addEventListener("click", () => openPersonDialog(person));
         row.append(edit);
       }
       return row;
     }));
+  }
+
+  // The person's row was redrawn while the dialog was open: return to its Edit button,
+  // or to Add a person when the row is gone.
+  function focusPerson(id) {
+    const edit = id ? el.peopleList.querySelector(`[data-person-id="${CSS.escape(id)}"]`) : null;
+    (edit || el.addPersonButton).focus();
   }
 
   function openPersonDialog(person = null) {
@@ -305,6 +314,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
         : await api("/api/users", { method: "POST", body: JSON.stringify(body) });
       el.personDialog.close();
       await loadPeople();
+      focusPerson(user.id);
       if (password) showShare(user, password);
       else toast(`${user.displayName} saved.`);
     } catch (error) {
@@ -322,6 +332,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
       const { user } = await api(`/api/users/${encodeURIComponent(editing.id)}`, { method: "PUT", body: JSON.stringify({ disabled: turningOff }) });
       el.personDialog.close();
       await loadPeople();
+      focusPerson(user.id);
       toast(turningOff ? `${user.displayName} can no longer sign in.` : `${user.displayName} can sign in again.`);
     } catch (error) {
       el.personError.textContent = error.message;
@@ -336,6 +347,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
       await api(`/api/users/${encodeURIComponent(editing.id)}`, { method: "DELETE" });
       el.personDialog.close();
       await loadPeople();
+      focusPerson(null);
       toast(`${name} was deleted.`);
     } catch (error) {
       el.personError.textContent = error.message;
@@ -379,7 +391,11 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
 
   el.signInForm.addEventListener("submit", submitSignIn);
   el.signInShow.addEventListener("click", () => setPasswordVisible(el.signInPassword, el.signInShow, el.signInPassword.type === "password"));
-  el.signInCancel.addEventListener("click", hideSignIn);
+  el.signInCancel.addEventListener("click", () => {
+    hideSignIn();
+    // Back where the person came from: the settings were opened from the profile button.
+    document.querySelector("#profileButton")?.focus();
+  });
   el.profileForm.addEventListener("submit", submitProfile);
   el.passwordForm.addEventListener("submit", submitPassword);
   el.signOutButton.addEventListener("click", signOut);
