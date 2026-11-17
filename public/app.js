@@ -1265,14 +1265,17 @@ function cleanStepLine(line) {
   return String(line).replace(/^\s*(?:step\s*)?\d+\s*[.):-]\s*/i, "").trim();
 }
 
-// "Bake for 20 minutes until bubbling." is a step, not a time. A time or yield line has a colon
-// ("Bake time: 25 min") or, outside the steps, is just a short number ("Serves 4", "Prep 10 min").
+// "Bake for 20 minutes until bubbling." and "Cook the pasta: 8 to 10 minutes." are steps, not
+// times. A time or yield line has a colon straight after its label ("Bake time: 25 min"), or a
+// short number after it: anywhere for a yield or a "... time" label ("Makes 24 cookies",
+// "Total time 35 min"), and outside the steps for the rest ("Prep 10 min").
 function recipeMetaLine(line, section) {
   const meta = line.match(RECIPE_META_PATTERN);
   if (!meta) return null;
-  const labelled = /^[^:]{1,24}:/.test(line);
+  const labelled = line.slice(meta[1].length).trimStart().startsWith(":");
   const shortValue = /^(about\s+)?\d/i.test(meta[2]) && meta[2].split(/\s+/).length <= 4;
-  return labelled || (section !== "steps" && shortValue) ? meta : null;
+  const anySection = /^(serves|servings?|yield|makes)$|time$/i.test(meta[1]);
+  return labelled || (shortValue && (anySection || section !== "steps")) ? meta : null;
 }
 
 // Best-effort parse of a whole pasted recipe into form-ready fields. Handles
