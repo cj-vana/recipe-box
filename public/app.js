@@ -1747,6 +1747,17 @@ function setupEvents() {
   elements.viewAllHistoryButton.addEventListener("click", () => { closeDialog(elements.recipeDialog); switchView("history"); });
   elements.recipeForm.addEventListener("submit", submitRecipe);
   elements.madeForm.addEventListener("submit", submitMade);
+  // I made this opened by Cook Mode's Finish has no button to go back to (the recipe closed
+  // first), and saving redraws the cards: land on that recipe's card, or the view's heading.
+  elements.madeDialog.addEventListener("close", () => {
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected && active.offsetParent) return;
+    const id = state.activeRecipe?.id;
+    const view = document.querySelector("[data-app-view]:not([hidden])");
+    const card = id && view ? view.querySelector(`[data-focus-key="open:${CSS.escape(id)}"]`) : null;
+    if (card) card.focus();
+    else focusViewHeading();
+  });
   elements.quickTimerForm.addEventListener("submit", (event) => { event.preventDefault(); startTimer(elements.timerNameInput.value, elements.timerMinutesInput.value); });
   elements.cookPrevButton.addEventListener("click", () => moveCookStep(-1));
   elements.cookNextButton.addEventListener("click", () => moveCookStep(1));
