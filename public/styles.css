@@ -18,7 +18,8 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+/* Anything scrolled into view (a focused heading, a Tab stop) stops below the sticky nav (57-61 px tall). */
+html { scroll-behavior: smooth; scroll-padding-top: 76px; }
 
 body {
   margin: 0;

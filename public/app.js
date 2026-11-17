@@ -1444,15 +1444,21 @@ async function deleteRecipe() {
   } catch (error) { elements.formError.textContent = error.message; }
 }
 
+// Focus alone leaves a heading that is partly on screen where it is, even under the sticky nav,
+// so scroll it into view against the page's scroll padding as well.
+function focusHeading(heading) {
+  heading.tabIndex = -1;
+  heading.focus({ preventScroll: true });
+  heading.scrollIntoView({ block: "nearest", behavior: "instant" });
+}
+
 // When the control that had focus is gone, give it to the open view's heading.
 function focusViewHeading() {
   const active = document.activeElement;
   if (active && active !== document.body && active.offsetParent) return;
   const view = document.querySelector("[data-app-view]:not([hidden])");
   const heading = view?.querySelector("#libraryTitle") || view?.querySelector("h1");
-  if (!heading) return;
-  heading.tabIndex = -1;
-  heading.focus();
+  if (heading) focusHeading(heading);
 }
 
 function renderAll() {
@@ -1706,6 +1712,14 @@ function setupEvents() {
   elements.searchInput.addEventListener("input", () => { state.query = elements.searchInput.value; renderRecipes(); });
   elements.sortSelect.addEventListener("change", () => { state.sort = elements.sortSelect.value; renderRecipes(); });
   elements.suggestAgainButton.addEventListener("click", () => { state.suggestionOffset += 1; renderHero(); });
+  // The browser leaves a control that is partly on screen where it is, even when the sticky nav covers
+  // most of it, so move anything that takes focus under the nav down into view.
+  const viewNav = document.querySelector(".view-nav");
+  document.addEventListener("focusin", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement) || target.closest("dialog, .view-nav, .site-header")) return;
+    if (target.getBoundingClientRect().top < viewNav.getBoundingClientRect().bottom) target.scrollIntoView({ block: "nearest", behavior: "instant" });
+  });
   document.addEventListener("keydown", (event) => {
     if (event.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { event.preventDefault(); switchView("recipes"); elements.searchInput.focus(); }
     if (elements.recipeDialog.classList.contains("cook-mode") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
@@ -1876,10 +1890,7 @@ function preserveFocus(render) {
   const headings = [...(list?.closest("[data-app-view]")?.querySelectorAll("h1, h2") || [])]
     .filter((heading) => heading.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
   const heading = headings.at(-1);
-  if (heading) {
-    heading.tabIndex = -1;
-    heading.focus();
-  }
+  if (heading) focusHeading(heading);
 }
 
 let account = null;
