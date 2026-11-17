@@ -47,6 +47,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     generatePassword: $("#generatePasswordButton"), deletePerson: $("#deletePersonButton"),
     togglePerson: $("#togglePersonButton"),
     shareDialog: $("#shareDialog"), shareTitle: $("#shareTitle"), shareText: $("#shareText"),
+    shareIntro: $("#shareIntro"), shareLabel: $("#shareLabel"),
     shareStatus: $("#shareStatus"), copyShare: $("#copyShareButton"),
   };
   let people = [];
@@ -345,8 +346,21 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     const lines = [`Recipe Box sign-in for ${user.displayName}`];
     if (!getSession().homeNetwork) lines.push(`Address: ${location.origin}`);
     lines.push(`Username: ${user.username}`, `Password: ${password}`);
-    el.shareTitle.textContent = `Send ${user.displayName} their sign-in`;
-    el.shareText.value = lines.join("\n");
+    showText({
+      title: `Send ${user.displayName} their sign-in`,
+      intro: "Share these details with them. The password is not shown again; you can set a new one later.",
+      label: "Sign-in details",
+      text: lines.join("\n"),
+    });
+  }
+
+  // A dialog with text to copy, for when the browser cannot share or use the clipboard.
+  function showText({ title, intro, label, text, rows = 5 }) {
+    el.shareTitle.textContent = title;
+    el.shareIntro.textContent = intro;
+    el.shareLabel.textContent = label;
+    el.shareText.value = text;
+    el.shareText.rows = rows;
     el.shareStatus.textContent = "";
     el.shareDialog.showModal();
   }
@@ -387,5 +401,5 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     el.shareStatus.textContent = "";
   });
 
-  return { showSignIn, hideSignIn, openSettings, renderSettings };
+  return { showSignIn, hideSignIn, openSettings, renderSettings, showText };
 }

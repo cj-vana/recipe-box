@@ -17,8 +17,9 @@ finished-dish image) that you can keep, edit or delete.
   timer chips (detects "roast for 25 to 30 minutes"), wake lock and a timer dock
 - People and profiles: an admin adds people, gives each a role and a password, and
   can reset, turn off or delete them
-- Per-person cooking journal (ratings, notes, dates), meal plan, shopping list and
-  favorites, saved on the server so they follow you between devices
+- Per-person cooking journal (ratings, notes, dates), meal plan (breakfast, lunch and
+  dinner for each day), shopping list and favorites, saved on the server so they follow
+  you between devices
 - Per-person Kitchen Stock: fridge, pantry and freezer with barcode scanning (camera
   or photo), Open Food Facts lookup and low-stock flags
 - JSON backup export, offline copy via a service worker, and an MCP (Model Context

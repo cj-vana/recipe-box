@@ -126,7 +126,7 @@ const elements = {
   nextWeekButton: $("#nextWeekButton"), thisWeekButton: $("#thisWeekButton"), planDialog: $("#planDialog"),
   planForm: $("#planForm"), planDate: $("#planDate"), planRecipeTitle: $("#planRecipeTitle"),
   planRecipeField: $("#planRecipeField"), planRecipeSelect: $("#planRecipeSelect"), planReplaces: $("#planReplaces"),
-  historyStats: $("#historyStats"), historyList: $("#historyList"), historyEmpty: $("#historyEmpty"),
+  historyStats: $("#historyStats"), historyList: $("#historyList"), historyEmpty: $("#historyEmpty"), historyHeading: $("#historyHeading"),
   shoppingForm: $("#shoppingForm"), shoppingInput: $("#shoppingInput"), shoppingList: $("#shoppingList"),
   shoppingEmpty: $("#shoppingEmpty"), clearCheckedButton: $("#clearCheckedButton"),
   timerButton: $("#timerButton"), timerCount: $("#timerCount"), timerDock: $("#timerDock"),
@@ -909,7 +909,7 @@ function renderHistory() {
   const repeat = state.history.length - tried;
   elements.historyStats.replaceChildren(
     statBlock(state.history.length, "meals logged"), statBlock(tried, "recipes tried"),
-    statBlock(average, "average rating"), statBlock(last30 || repeat, last30 ? "made in 30 days" : "repeat dinners"),
+    statBlock(average, "average rating"), statBlock(last30 || repeat, last30 ? "made in 30 days" : "repeat meals"),
   );
   elements.historyList.replaceChildren(...state.history.map((entry) => {
     const row = document.createElement("article");
@@ -953,9 +953,14 @@ async function removeHistoryEntry(entry) {
   if (!confirm(`Remove the ${entry.recipeTitle} journal entry from ${formatDate(entry.madeAt)}?`)) return;
   try {
     await api(`/api/history/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
+    const index = state.history.findIndex((item) => item.id === entry.id);
     state.history = state.history.filter((item) => item.id !== entry.id);
     writeLocal(personKey("history-cache"), state.history);
     renderHistory(); renderStats(); renderRecipes(); renderNew(); renderHero();
+    // The button that was pressed is gone: keep the keyboard on the list.
+    const buttons = elements.historyList.querySelectorAll(".history-entry button");
+    (buttons[index] || buttons[index - 1] || elements.historyHeading).focus();
+    showToast("Removed from your journal.");
   } catch (error) { showToast(error.message); }
 }
 
@@ -1481,7 +1486,11 @@ function closeDialog(dialog) {
     [...elements.stepList.children].forEach((item) => item.classList.remove("current"));
     if (state.wakeLock) state.wakeLock.release().catch(() => {});
     state.wakeLock = null;
-    if (!location.hash.startsWith("#view=")) history.replaceState(null, "", location.pathname);
+    if (!location.hash.startsWith("#view=")) {
+      // Put the view the recipe was opened from back in the address, so a reload stays there.
+      const view = document.querySelector("[data-app-view]:not([hidden])")?.dataset.appView;
+      history.replaceState(null, "", view && view !== "recipes" ? `#view=${view}` : location.pathname);
+    }
   }
   if (dialog === elements.scannerDialog) clearScanner();
   if (dialog.open) dialog.close();
@@ -1574,10 +1583,25 @@ async function shareRecipe() {
   const recipe = state.activeRecipe;
   if (!recipe) return;
   const text = `${recipe.title}\n\n${recipe.ingredients.map((item) => `${item.amount} ${item.item}`.trim()).join("\n")}\n\n${recipe.steps.map((step, index) => `${index + 1}. ${step}`).join("\n")}`;
-  try {
-    if (navigator.share) await navigator.share({ title: recipe.title, text, url: location.href });
-    else { await navigator.clipboard.writeText(text); showToast("Recipe copied to the clipboard."); }
-  } catch (error) { if (error.name !== "AbortError") showToast("Could not share the recipe."); }
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: recipe.title, text, url: location.href });
+      return;
+    } catch (error) {
+      if (error.name === "AbortError") return;
+    }
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("Recipe copied to the clipboard.");
+      return;
+    } catch {
+      // Fall through to the dialog.
+    }
+  }
+  // Plain http on the home network has neither sharing nor the clipboard: show the text to copy.
+  account.showText({ title: `Share ${recipe.title}`, intro: "Copy the recipe and paste it into a message or a note.", label: "Recipe", text, rows: 12 });
 }
 
 async function exportBackup() {
@@ -1675,7 +1699,9 @@ function setupEvents() {
     const meal = chosenMeal();
     if (!recipeId || !date) return;
     state.planner = setMeal(state.planner, date, meal, recipeId);
-    saveProfile("planner"); elements.planDialog.close(); renderPlanner(); renderStats();
+    // Closing returns focus to the button that opened the dialog; when that was an empty
+    // meal, the redraw moves it to the meal that was just planned.
+    saveProfile("planner"); elements.planDialog.close(); preserveFocus(renderPlanner); renderStats();
     showToast(`Added to ${mealLabel(meal).toLowerCase()} on ${longDay(date)}.`);
   });
   elements.planForm.addEventListener("change", (event) => {

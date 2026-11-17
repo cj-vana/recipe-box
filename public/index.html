@@ -155,10 +155,10 @@
       </section>
 
       <section class="app-view utility-view" id="historyView" data-app-view="history" hidden>
-        <div class="tool-heading"><div><h1>Made it</h1><p>Dates, ratings and notes for the dinners you cooked.</p></div></div>
+        <div class="tool-heading"><div><h1 id="historyHeading" tabindex="-1">Made it</h1><p>Dates, ratings and notes for the meals you cooked.</p></div></div>
         <div class="history-stats" id="historyStats"></div>
         <div class="history-list" id="historyList"></div>
-        <div class="empty-state" id="historyEmpty" hidden><span>Your first dinner goes here.</span><p>Open any recipe and choose &ldquo;I made this&rdquo;.</p></div>
+        <div class="empty-state" id="historyEmpty" hidden><span>Your first meal goes here.</span><p>Open any recipe and choose &ldquo;I made this&rdquo;.</p></div>
       </section>
 
       <section class="app-view utility-view" id="shoppingView" data-app-view="shopping" hidden>
@@ -393,8 +393,8 @@
       <section class="form-sheet">
         <button class="dialog-close" data-close="shareDialog" type="button" aria-label="Close">&times;</button>
         <h2 id="shareTitle">Send their sign-in</h2>
-        <p class="form-intro">Share these details with them. The password is not shown again; you can set a new one later.</p>
-        <label class="field field-wide">Sign-in details<textarea id="shareText" rows="5" readonly></textarea></label>
+        <p class="form-intro" id="shareIntro">Share these details with them. The password is not shown again; you can set a new one later.</p>
+        <label class="field field-wide"><span id="shareLabel">Sign-in details</span><textarea id="shareText" rows="5" readonly></textarea></label>
         <p class="lookup-status" id="shareStatus" role="status"></p>
         <div class="form-actions"><button class="button button-quiet" id="copyShareButton" type="button">Copy</button><button class="button button-red" data-close="shareDialog" type="button">Done</button></div>
       </section>
