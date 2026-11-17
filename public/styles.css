@@ -455,7 +455,7 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
 #barcodeReader { min-height: 280px; margin: 22px 0; overflow: hidden; border: 1px solid var(--rule); background: var(--ink); color: white; }
 #barcodeReader video { object-fit: cover; }
 #barcodeReader img { margin: auto; }
-#barcodeReader button, #barcodeReader select { font-family: var(--body); }
+#barcodeReader button, #barcodeReader select { min-height: 44px; margin: 6px 4px; padding: 8px 16px; border: 0; border-radius: 999px; background: var(--cream); color: var(--ink); font: 800 14px var(--body); cursor: pointer; }
 .manual-barcode { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
 
 /* Settings, profile and people */
@@ -500,7 +500,7 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
 .stock-summary span, .history-stats span { color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .utility-toolbar { display: grid; grid-template-columns: minmax(240px, .6fr) 1fr; gap: 24px; align-items: end; margin-bottom: 26px; }
 .small-search { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
-.small-search input { min-height: 46px; padding: 9px 12px; border: 1px solid rgba(37, 37, 31, 0.4); background: var(--cream); font-size: 16px; letter-spacing: 0; text-transform: none; }
+.small-search input { min-height: 46px; padding: 9px 12px; border: 1px solid rgba(37, 37, 31, 0.4); background: var(--cream); color: var(--ink); font-size: 16px; font-weight: 400; letter-spacing: 0; text-transform: none; }
 .stock-filters { justify-content: flex-end; margin: 0; }
 .stock-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .stock-card { position: relative; display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 15px; align-items: center; min-width: 0; padding: 20px; border: 1px solid var(--rule); background: var(--cream); box-shadow: 4px 5px 0 rgba(56,95,70,.08); }
@@ -550,7 +550,7 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
 .meal-options label:has(input:focus-visible) { z-index: 1; outline: 3px solid var(--red); outline-offset: 2px; }
 
 .shopping-add { display: grid; grid-template-columns: 1fr auto; gap: 10px; max-width: 760px; margin-bottom: 26px; }
-.shopping-add input { min-height: 50px; padding: 10px 14px; border: 1px solid rgba(37, 37, 31, 0.4); background: var(--cream); font-size: 16px; }
+.shopping-add input { min-height: 50px; padding: 10px 14px; border: 1px solid rgba(37, 37, 31, 0.4); background: var(--cream); color: var(--ink); font-size: 16px; }
 .shopping-list { max-width: 760px; border-top: 1px solid var(--rule); }
 .shopping-item { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 8px 4px; border-bottom: 1px solid var(--rule); cursor: pointer; }
 .shopping-item input { width: 20px; height: 20px; accent-color: var(--red); }

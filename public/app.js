@@ -130,7 +130,7 @@ const elements = {
   shoppingForm: $("#shoppingForm"), shoppingInput: $("#shoppingInput"), shoppingList: $("#shoppingList"),
   shoppingEmpty: $("#shoppingEmpty"), clearCheckedButton: $("#clearCheckedButton"),
   timerButton: $("#timerButton"), timerCount: $("#timerCount"), timerDock: $("#timerDock"),
-  timerList: $("#timerList"), closeTimerDock: $("#closeTimerDock"), dockTimerForm: $("#dockTimerForm"),
+  timerList: $("#timerList"), closeTimerDock: $("#closeTimerDock"), dockTimerForm: $("#dockTimerForm"), timerDockHeading: $("#timerDockHeading"),
   dockTimerName: $("#dockTimerName"), dockTimerMinutes: $("#dockTimerMinutes"),
   exportBackupButton: $("#exportBackupButton"),
   cookPrevButton: $("#cookPrevButton"), cookNextButton: $("#cookNextButton"),
@@ -484,7 +484,20 @@ function renderIngredients() {
   }));
 }
 
+function renderDetailFacts() {
+  const recipe = state.activeRecipe;
+  if (!recipe) return;
+  elements.detailFacts.replaceChildren(
+    fact(formatTime(totalMinutes(recipe))),
+    fact(`Prep ${recipe.prepMinutes || 0} min`),
+    fact(`Serves ${recipe.servings}`),
+    fact(madeFact(madeCount(recipe.id))),
+  );
+}
+
+// The open recipe's journal: its facts (made count) and its last few entries.
 function renderRecipeHistory() {
+  renderDetailFacts();
   const entries = state.history.filter((entry) => entry.recipeId === state.activeRecipe?.id).slice(0, 3);
   if (!entries.length) {
     const empty = document.createElement("p");
@@ -531,12 +544,7 @@ function openRecipe(recipe, updateHash = true) {
   elements.detailKicker.textContent = [recipe.category, recipe.mainIngredient].filter(Boolean).join(", ");
   elements.detailTitle.textContent = recipe.title;
   elements.detailSummary.textContent = recipe.summary;
-  elements.detailFacts.replaceChildren(
-    fact(formatTime(totalMinutes(recipe))),
-    fact(`Prep ${recipe.prepMinutes || 0} min`),
-    fact(`Serves ${recipe.servings}`),
-    fact(madeFact(madeCount(recipe.id))),
-  );
+  renderDetailFacts();
   elements.editRecipeButton.hidden = !can("editor");
   renderIngredients();
   elements.stepList.replaceChildren(...recipe.steps.map((step, index) => {
@@ -1016,12 +1024,16 @@ function renderStock() {
     const edit = document.createElement("button");
     edit.type = "button"; edit.className = "edit-stock"; edit.textContent = "Edit";
     edit.setAttribute("aria-label", `Edit ${item.name}`);
+    edit.dataset.focusKey = `stock-edit:${item.id}`;
     edit.addEventListener("click", () => openStockDialog(item));
     controls.append(minus, quantity, plus, edit);
     card.append(initial, copy, controls);
     return card;
   }));
   elements.stockEmpty.hidden = items.length > 0;
+  const filtered = state.inventory.length > 0;
+  elements.stockEmpty.querySelector("span").textContent = filtered ? "Nothing matches." : "Nothing recorded here yet.";
+  elements.stockEmpty.querySelector("p").textContent = filtered ? "Try another word or filter." : "Scan a barcode or add an item by hand.";
   renderStats();
 }
 
@@ -1074,7 +1086,7 @@ async function submitStock(event) {
     else state.inventory.push(saved);
     writeLocal(personKey("inventory-cache"), state.inventory);
     elements.stockDialog.close();
-    renderStock(); renderHero();
+    preserveFocus(renderStock); renderHero();
     showToast(payload.merged ? `Added to the existing ${saved.name} quantity.` : `${saved.name} saved to Kitchen Stock.`);
   } catch (error) { elements.stockError.textContent = error.message; }
 }
@@ -1088,7 +1100,8 @@ async function deleteStock() {
     state.inventory = state.inventory.filter((candidate) => candidate.id !== id);
     writeLocal(personKey("inventory-cache"), state.inventory);
     elements.stockDialog.close();
-    renderStock(); renderHero();
+    preserveFocus(renderStock); renderHero();
+    showToast(`${item.name} deleted from Kitchen Stock.`);
   } catch (error) { elements.stockError.textContent = error.message; }
 }
 
@@ -1178,6 +1191,16 @@ function switchView(name, updateHash = true) {
   if (name === "history") renderHistory();
   if (name === "planner") renderPlanner();
   if (name === "shopping") renderShopping();
+  // A control in the view that was just hidden (the hero's "new this month" link) leaves focus
+  // on nothing; give it to the new view's heading instead.
+  const focused = document.activeElement;
+  if (!focused || focused === document.body || !focused.offsetParent) {
+    const heading = document.querySelector(`[data-app-view="${name}"] h1`);
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+  }
   if (updateHash) history.replaceState(null, "", name === "recipes" ? location.pathname : `#view=${name}`);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1397,8 +1420,20 @@ async function deleteRecipe() {
     elements.addDialog.close();
     closeDialog(elements.recipeDialog);
     renderAll();
+    focusViewHeading();
     showToast(`${recipe.title} was deleted.`);
   } catch (error) { elements.formError.textContent = error.message; }
+}
+
+// When the control that had focus is gone, give it to the open view's heading.
+function focusViewHeading() {
+  const active = document.activeElement;
+  if (active && active !== document.body && active.offsetParent) return;
+  const view = document.querySelector("[data-app-view]:not([hidden])");
+  const heading = view?.querySelector("#libraryTitle") || view?.querySelector("h1");
+  if (!heading) return;
+  heading.tabIndex = -1;
+  heading.focus();
 }
 
 function renderAll() {
@@ -1525,31 +1560,52 @@ async function announceTimer(timer) {
   showTimerDock();
 }
 
+function timerRow(timer) {
+  const row = document.createElement("div");
+  row.className = "timer-row";
+  row.dataset.id = timer.id;
+  const name = document.createElement("strong");
+  name.textContent = timer.name;
+  const time = document.createElement("time");
+  const actions = document.createElement("div");
+  actions.className = "timer-row-actions";
+  const pause = document.createElement("button");
+  pause.type = "button"; pause.dataset.role = "pause";
+  const minute = document.createElement("button");
+  minute.type = "button"; minute.dataset.action = "minute"; minute.textContent = "+1 min";
+  minute.setAttribute("aria-label", `Add one minute to ${timer.name}`);
+  const remove = document.createElement("button");
+  remove.type = "button"; remove.dataset.action = "remove"; remove.textContent = "Clear";
+  remove.setAttribute("aria-label", `Clear ${timer.name}`);
+  actions.append(pause, minute, remove);
+  row.append(name, time, actions);
+  return row;
+}
+
+// Rows are kept and updated in place, so a focused button keeps focus through the
+// every-second tick and through Pause, Resume and +1 min.
 function renderTimers() {
   const now = Date.now();
-  elements.timerList.replaceChildren(...state.timers.map((timer) => {
+  const existing = new Map([...elements.timerList.children].map((row) => [row.dataset.id, row]));
+  const rows = state.timers.map((timer) => {
     const remaining = timer.pausedRemaining ?? timer.endAt - now;
     if (remaining <= 0) announceTimer(timer);
-    const row = document.createElement("div");
-    row.className = `timer-row${remaining <= 0 ? " expired" : ""}`;
-    row.dataset.id = timer.id;
-    const name = document.createElement("strong");
-    name.textContent = timer.name;
-    const time = document.createElement("time");
-    time.textContent = remaining <= 0 ? "Done" : formatCountdown(remaining);
-    const actions = document.createElement("div");
-    actions.className = "timer-row-actions";
-    const pause = document.createElement("button");
-    pause.type = "button"; pause.dataset.action = timer.pausedRemaining === undefined ? "pause" : "resume";
-    pause.textContent = timer.pausedRemaining === undefined ? "Pause" : "Resume";
-    const minute = document.createElement("button");
-    minute.type = "button"; minute.dataset.action = "minute"; minute.textContent = "+1 min";
-    const remove = document.createElement("button");
-    remove.type = "button"; remove.dataset.action = "remove"; remove.textContent = "Clear";
-    actions.append(pause, minute, remove);
-    row.append(name, time, actions);
+    const row = existing.get(timer.id) || timerRow(timer);
+    row.classList.toggle("expired", remaining <= 0);
+    const time = row.querySelector("time");
+    const left = remaining <= 0 ? "Done" : formatCountdown(remaining);
+    if (time.textContent !== left) time.textContent = left;
+    const paused = timer.pausedRemaining !== undefined;
+    const pause = row.querySelector('[data-role="pause"]');
+    if (pause.dataset.action !== (paused ? "resume" : "pause")) {
+      pause.dataset.action = paused ? "resume" : "pause";
+      pause.textContent = paused ? "Resume" : "Pause";
+      pause.setAttribute("aria-label", `${paused ? "Resume" : "Pause"} ${timer.name}`);
+    }
     return row;
-  }));
+  });
+  const shown = [...elements.timerList.children];
+  if (rows.length !== shown.length || rows.some((row, index) => row !== shown[index])) elements.timerList.replaceChildren(...rows);
   elements.timerCount.textContent = state.timers.filter((timer) => (timer.pausedRemaining ?? timer.endAt - now) > 0).length;
   elements.timerButton.hidden = state.timers.length === 0;
 }
@@ -1568,7 +1624,17 @@ function timerAction(event) {
   if (!button || !row) return;
   const timer = state.timers.find((item) => item.id === row.dataset.id);
   if (!timer) return;
-  if (button.dataset.action === "remove") state.timers = state.timers.filter((item) => item.id !== timer.id);
+  if (button.dataset.action === "remove") {
+    const index = [...elements.timerList.children].indexOf(row);
+    state.timers = state.timers.filter((item) => item.id !== timer.id);
+    saveTimers(); renderTimers();
+    // The pressed button is gone: move to the next timer's Clear, or the panel heading.
+    const rows = elements.timerList.children;
+    const next = (rows[index] || rows[index - 1])?.querySelector('[data-action="remove"]');
+    if (next) next.focus();
+    else elements.timerDockHeading.focus();
+    return;
+  }
   if (button.dataset.action === "pause") timer.pausedRemaining = Math.max(0, timer.endAt - Date.now());
   if (button.dataset.action === "resume") { timer.endAt = Date.now() + timer.pausedRemaining; delete timer.pausedRemaining; timer.announced = false; }
   if (button.dataset.action === "minute") {
@@ -1766,7 +1832,19 @@ function preserveFocus(render) {
   if (!key || !scope?.id) return;
   const target = document.querySelector(`#${scope.id} [data-focus-key="${CSS.escape(key)}"]`)
     || document.querySelector(`#${scope.id} [data-focus-key$=":${CSS.escape(key.split(":").slice(1).join(":"))}"]`);
-  target?.focus();
+  if (target) {
+    target.focus();
+    return;
+  }
+  // The item left the list (a filter hides it now): move to the nearest heading above the list.
+  const list = document.querySelector(`#${scope.id}`);
+  const headings = [...(list?.closest("[data-app-view]")?.querySelectorAll("h1, h2") || [])]
+    .filter((heading) => heading.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const heading = headings.at(-1);
+  if (heading) {
+    heading.tabIndex = -1;
+    heading.focus();
+  }
 }
 
 let account = null;

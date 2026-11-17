@@ -487,3 +487,19 @@ test("importing a URL from outside refuses private addresses", async () => {
     await new Promise((resolve) => origin.close(resolve));
   }
 });
+
+test("input the store refuses gets its own message as a 400, not a server error", async () => {
+  const broth = [{ amount: "1 cup", item: "broth" }];
+  const cases = [
+    ["/api/recipes", { title: "   ", ingredients: broth, steps: ["Warm it."] }, "A recipe title is required."],
+    ["/api/recipes", { title: "Blank Soup", ingredients: [{ amount: " ", item: "  " }], steps: ["Warm it."] }, "Add at least one ingredient."],
+    ["/api/recipes", { title: "Blank Soup", ingredients: broth, steps: ["  "] }, "Add at least one instruction."],
+    ["/api/history", { recipeId: "loaded-taco-bowls", madeAt: "17/11/2026" }, "Made date must use YYYY-MM-DD."],
+    ["/api/inventory", { name: "   ", quantity: 1 }, "An item name is required."],
+  ];
+  for (const [pathname, body, message] of cases) {
+    const result = await call(home, pathname, { method: "POST", body });
+    assert.equal(result.status, 400, `${pathname} ${JSON.stringify(body)}`);
+    assert.equal(result.json.error, message);
+  }
+});

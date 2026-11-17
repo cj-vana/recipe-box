@@ -401,7 +401,7 @@
     </dialog>
 
     <dialog class="timer-dock" id="timerDock" aria-label="Cooking timers">
-      <header><h2>Timers</h2><button id="closeTimerDock" type="button" aria-label="Hide timers">&times;</button></header>
+      <header><h2 id="timerDockHeading" tabindex="-1">Timers</h2><button id="closeTimerDock" type="button" aria-label="Hide timers">&times;</button></header>
       <div id="timerList"></div>
       <form id="dockTimerForm" class="dock-timer-form"><input id="dockTimerName" placeholder="Timer name" value="Kitchen timer" aria-label="Timer name"><input id="dockTimerMinutes" type="number" min="1" max="600" value="5" aria-label="Minutes"><button type="submit">Start</button></form>
     </dialog>
