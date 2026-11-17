@@ -94,12 +94,11 @@ To let people in from outside:
 Passwords are stored as scrypt hashes. Sign-in pauses for up to fifteen minutes after
 five wrong tries for one username from one address, twenty from one address, or twenty
 for one username from any addresses. Names that are not accounts are counted the same
-way, so a pause does not tell anyone which names exist. The last limit does not apply to
-an address that signed in as that person in the last 30 days, or on the home network, so
-it cannot lock the real person out. If a very large number of names is being guessed at
-once, sign-ins from new addresses wait until it stops; those addresses and the home network
-keep working. Wrong current passwords on a password change are counted the same way. Only
-the Owner can change the Owner's account. Cookies are
+way, so a pause does not tell anyone which names exist, and each try is counted as it
+starts, so sending many at once gets no more through. The last limit does not apply to an
+address that signed in as that person in the last 30 days, or on the home network, so it
+cannot lock the real person out. Wrong current passwords on a password change are counted
+the same way. Only the Owner can change the Owner's account. Cookies are
 `HttpOnly`, `SameSite=Lax`, and `Secure` when the proxy reports HTTPS. Requests that
 change data must come from the app's own pages (checked with `Sec-Fetch-Site`) and
 send JSON.

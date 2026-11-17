@@ -214,6 +214,16 @@ test("sign-in names no account can have never reach another counter, but still c
   app.users.limiter.clear();
 });
 
+test("a burst of sign-ins from one address cannot slip past the limit while passwords are checked", async () => {
+  app.users.limiter.clear();
+  const visitor = { "cf-connecting-ip": "198.51.100.90" };
+  const results = await Promise.all(Array.from({ length: 30 }, (_, index) => signIn("erin", `burst-${index}-password`, visitor)));
+  const statuses = results.map((result) => result.status);
+  assert.equal(statuses.filter((status) => status === 401).length, 5, statuses.join(","));
+  assert.equal(statuses.filter((status) => status === 429).length, 25);
+  app.users.limiter.clear();
+});
+
 test("only the Owner can change the Owner's account", async () => {
   const owner = app.users.owner();
   const admin = await call(home, "/api/users", { method: "POST", body: { displayName: "Second Admin", username: "admin2", role: "admin", password: "basil-onion-admin-77" } });
