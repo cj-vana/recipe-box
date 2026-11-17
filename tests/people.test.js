@@ -142,7 +142,7 @@ test("the home port only answers addresses on the home network, so a rebound dom
 });
 
 test("the outside port takes the visitor address from the proxy, and one username cannot be guessed from many addresses", async () => {
-  app.users.limiter.failures.clear();
+  app.users.limiter.clear();
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const result = await signIn("erin", `wrong-${attempt}-password`, { "cf-connecting-ip": `203.0.113.${attempt + 1}` });
     assert.equal(result.status, 401, `attempt ${attempt}`);
@@ -152,8 +152,44 @@ test("the outside port takes the visitor address from the proxy, and one usernam
   app.users.limiter.trusted.clear();
   const atHome = await call(home, "/api/session", { method: "POST", body: { username: "erin", password: passwords.erin } });
   assert.equal(atHome.status, 200, "the real person can still sign in on the home network");
-  app.users.limiter.failures.clear();
+  app.users.limiter.clear();
   assert.equal((await signIn("erin", passwords.erin, { "cf-connecting-ip": "203.0.113.200" })).status, 200);
+});
+
+test("a name with no account pauses exactly like a real one, so the pause does not reveal who has an account", async () => {
+  app.users.limiter.clear();
+  for (const username of ["erin", "nobody-real"]) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const result = await signIn(username, `wrong-${attempt}-password`, { "cf-connecting-ip": `203.0.113.${attempt + 1}` });
+      assert.equal(result.status, 401, `${username} attempt ${attempt}`);
+    }
+  }
+  const real = await signIn("erin", "wrong-again-password", { "cf-connecting-ip": "203.0.113.201" });
+  const fake = await signIn("nobody-real", "wrong-again-password", { "cf-connecting-ip": "203.0.113.202" });
+  assert.equal(real.status, 429);
+  assert.equal(fake.status, 429, "the name with no account is paused too");
+  assert.equal(fake.json.error.replace(/\d+/g, "N"), real.json.error.replace(/\d+/g, "N"));
+  assert.ok(Number(fake.headers.get("retry-after")) > 0);
+  app.users.limiter.clear();
+});
+
+test("wrong current passwords count across addresses when changing a password", async () => {
+  app.users.limiter.clear();
+  const created = await call(home, "/api/users", { method: "POST", body: { displayName: "Pat", username: "pat", role: "member", password: "basil-onion-pat-55" } });
+  assert.equal(created.status, 201);
+  const { cookie } = await signIn("pat", "basil-onion-pat-55", { "cf-connecting-ip": "198.51.100.60" });
+  const change = (currentPassword, address) => call(outside, "/api/me/password", {
+    method: "POST", cookie, body: { currentPassword, newPassword: "a-brand-new-password-1" }, headers: { "cf-connecting-ip": address },
+  });
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    assert.equal((await change(`wrong-${attempt}-password`, `203.0.113.${attempt + 1}`)).status, 403, `attempt ${attempt}`);
+  }
+  const fromNewAddress = await change("basil-onion-pat-55", "203.0.113.230");
+  assert.equal(fromNewAddress.status, 429, "twenty wrong current passwords from any addresses pause password changes");
+  const fromOwnAddress = await change("basil-onion-pat-55", "198.51.100.60");
+  assert.equal(fromOwnAddress.status, 200, "the address Pat signed in from can still change the password");
+  await call(home, `/api/users/${created.json.user.id}`, { method: "DELETE" });
+  app.users.limiter.clear();
 });
 
 test("only the Owner can change the Owner's account", async () => {
