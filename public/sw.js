@@ -1,5 +1,5 @@
-const STATIC_CACHE = "recipe-box-static-v12";
-const DATA_CACHE = "recipe-box-data-v12";
+const STATIC_CACHE = "recipe-box-static-v13";
+const DATA_CACHE = "recipe-box-data-v13";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -8,6 +8,7 @@ const APP_SHELL = [
   "/amounts.js",
   "/api.js",
   "/account.js",
+  "/meal-plan.js",
   "/new-this-month.js",
   "/passphrase.js",
   "/vendor/html5-qrcode-2.3.8.min.js",

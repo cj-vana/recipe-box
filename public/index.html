@@ -147,7 +147,7 @@
 
       <section class="app-view utility-view" id="plannerView" data-app-view="planner" hidden>
         <div class="tool-heading">
-          <div><h1>Meal plan</h1><p>Pick a dinner for each night. Your plan is saved to your profile, so it shows on every device you use.</p></div>
+          <div><h1>Meal plan</h1><p>Plan breakfast, lunch and dinner for each day. Your plan is saved to your profile, so it shows on every device you use.</p></div>
           <div class="heading-actions"><button class="button button-quiet" id="previousWeekButton" type="button">&larr; Previous</button><button class="button button-quiet" id="thisWeekButton" type="button">This week</button><button class="button button-quiet" id="nextWeekButton" type="button">Next &rarr;</button></div>
         </div>
         <h2 class="week-title" id="weekTitle"></h2>
@@ -292,11 +292,19 @@
 
     <dialog class="form-dialog compact-dialog" id="planDialog" aria-labelledby="planTitle">
       <form class="form-sheet" id="planForm" method="dialog">
-        <button class="dialog-close" data-close="planDialog" type="button" aria-label="Close planner">&times;</button>
-        <h2 id="planTitle">Pick a night</h2><p id="planRecipeTitle" class="form-intro"></p>
+        <button class="dialog-close" data-close="planDialog" type="button" aria-label="Close">&times;</button>
+        <h2 id="planTitle">Add to the meal plan</h2><p id="planRecipeTitle" class="form-intro"></p>
         <div class="field-grid">
           <label class="field field-wide" id="planRecipeField">Recipe<select id="planRecipeSelect" name="recipeId" required></select></label>
           <label class="field field-wide">Date<input id="planDate" name="date" type="date" required></label>
+          <fieldset class="meal-choice field-wide"><legend>Meal</legend>
+            <div class="meal-options">
+              <label><input type="radio" name="meal" value="breakfast">Breakfast</label>
+              <label><input type="radio" name="meal" value="lunch">Lunch</label>
+              <label><input type="radio" name="meal" value="dinner" checked>Dinner</label>
+            </div>
+          </fieldset>
+          <p class="field-hint field-wide" id="planReplaces" role="status" hidden></p>
         </div>
         <div class="form-actions"><button class="button button-quiet" data-close="planDialog" type="button">Cancel</button><button class="button button-red" type="submit">Add to plan</button></div>
       </form>

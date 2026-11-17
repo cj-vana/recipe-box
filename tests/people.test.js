@@ -340,8 +340,8 @@ test("each person keeps their own Kitchen Stock, journal and lists", async () =>
   assert.equal((await call(home, `/api/history/${entry.json.entry.id}`, { method: "DELETE" })).status, 404);
   assert.equal((await call(outside, "/api/history/legacy-entry", { method: "DELETE", cookie })).status, 404);
 
-  const saved = await call(outside, "/api/profile", { method: "PUT", cookie, body: { favorites: ["loaded-taco-bowls", "loaded-taco-bowls"], planner: { "2026-11-18": "loaded-taco-bowls", "not-a-date": "x" }, shopping: [{ id: "a", text: "Limes", checked: false }] } });
-  assert.deepEqual(saved.json.profile, { favorites: ["loaded-taco-bowls"], planner: { "2026-11-18": "loaded-taco-bowls" }, shopping: [{ id: "a", text: "Limes", checked: false, source: "" }] });
+  const saved = await call(outside, "/api/profile", { method: "PUT", cookie, body: { favorites: ["loaded-taco-bowls", "loaded-taco-bowls"], planner: { "2026-11-18": "loaded-taco-bowls", "2026-11-19": { breakfast: "overnight-oats", lunch: "", snack: "chips" }, "not-a-date": "x" }, shopping: [{ id: "a", text: "Limes", checked: false }] } });
+  assert.deepEqual(saved.json.profile, { favorites: ["loaded-taco-bowls"], planner: { "2026-11-18": { dinner: "loaded-taco-bowls" }, "2026-11-19": { breakfast: "overnight-oats" } }, shopping: [{ id: "a", text: "Limes", checked: false, source: "" }] });
   const partial = await call(outside, "/api/profile", { method: "PUT", cookie, body: { favorites: [] } });
   assert.equal(partial.json.profile.shopping.length, 1, "only the lists sent are replaced");
   assert.deepEqual((await call(home, "/api/profile")).json.profile, { favorites: [], planner: {}, shopping: [] });

@@ -1,6 +1,7 @@
 import { friendlyNumber, parseLeadingNumber, scaleAmount } from "./amounts.js";
 import { api, ApiError, isOfflineError, onUnauthorized } from "./api.js";
 import { initials, setupAccount } from "./account.js";
+import { MEALS, mealLabel, mealsOf, mergePlans, normalizePlanner, removeMeal, setMeal, suggestedMeal } from "./meal-plan.js";
 import { isAddedThisMonth, monthKeyOf, monthLabel, newRecipes } from "./new-this-month.js";
 
 const GLYPH = {
@@ -124,7 +125,7 @@ const elements = {
   plannerGrid: $("#plannerGrid"), weekTitle: $("#weekTitle"), previousWeekButton: $("#previousWeekButton"),
   nextWeekButton: $("#nextWeekButton"), thisWeekButton: $("#thisWeekButton"), planDialog: $("#planDialog"),
   planForm: $("#planForm"), planDate: $("#planDate"), planRecipeTitle: $("#planRecipeTitle"),
-  planRecipeField: $("#planRecipeField"), planRecipeSelect: $("#planRecipeSelect"),
+  planRecipeField: $("#planRecipeField"), planRecipeSelect: $("#planRecipeSelect"), planReplaces: $("#planReplaces"),
   historyStats: $("#historyStats"), historyList: $("#historyList"), historyEmpty: $("#historyEmpty"),
   shoppingForm: $("#shoppingForm"), shoppingInput: $("#shoppingInput"), shoppingList: $("#shoppingList"),
   shoppingEmpty: $("#shoppingEmpty"), clearCheckedButton: $("#clearCheckedButton"),
@@ -226,7 +227,7 @@ async function saveProfile(...fields) {
 
 function applyProfile(profile) {
   state.favorites = new Set(profile.favorites || []);
-  state.planner = profile.planner || {};
+  state.planner = normalizePlanner(profile.planner);
   state.shopping = profile.shopping || [];
 }
 
@@ -766,19 +767,60 @@ function renderStats() {
   setBadge(elements.stockBadge, "stock", state.inventory.filter((item) => item.quantity <= item.lowAt).length, "low or out");
 }
 
-function openPlanDialog(recipe = null, date = dateKey(new Date())) {
+function chosenMeal() {
+  return elements.planForm.querySelector('input[name="meal"]:checked')?.value || "dinner";
+}
+
+// Recipes that suit the meal come first, under their own heading.
+function fillPlanRecipes(meal) {
+  const chosen = elements.planRecipeSelect.value;
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "Choose a recipe";
+  const group = (label, recipes) => {
+    const optgroup = document.createElement("optgroup");
+    optgroup.label = label;
+    optgroup.append(...recipes.map((recipe) => {
+      const option = document.createElement("option");
+      option.value = recipe.id;
+      option.textContent = recipe.title;
+      return option;
+    }));
+    return optgroup;
+  };
+  const sorted = [...state.recipes].sort((a, b) => a.title.localeCompare(b.title));
+  const suits = sorted.filter((recipe) => suggestedMeal(recipe) === meal);
+  const others = sorted.filter((recipe) => suggestedMeal(recipe) !== meal);
+  elements.planRecipeSelect.replaceChildren(placeholder, ...[
+    suits.length ? group(`${mealLabel(meal)} recipes`, suits) : null,
+    others.length ? group(suits.length ? "Other recipes" : "All recipes", others) : null,
+  ].filter(Boolean));
+  elements.planRecipeSelect.value = chosen;
+}
+
+function updatePlanReplaces() {
+  const recipeId = state.pendingPlanRecipeId || elements.planRecipeSelect.value;
+  const current = mealsOf(state.planner[elements.planDate.value])[chosenMeal()];
+  const recipe = current && current !== recipeId ? state.recipes.find((item) => item.id === current) : null;
+  elements.planReplaces.hidden = !recipe;
+  elements.planReplaces.textContent = recipe ? `Replaces ${recipe.title}.` : "";
+}
+
+function openPlanDialog(recipe = null, date = dateKey(new Date()), meal = suggestedMeal(recipe)) {
   state.pendingPlanRecipeId = recipe?.id || null;
   elements.planDate.value = date;
-  elements.planRecipeSelect.replaceChildren(...state.recipes.map((optionRecipe) => {
-    const option = document.createElement("option");
-    option.value = optionRecipe.id;
-    option.textContent = optionRecipe.title;
-    if (optionRecipe.id === recipe?.id) option.selected = true;
-    return option;
-  }));
+  for (const input of elements.planForm.querySelectorAll('input[name="meal"]')) input.checked = input.value === meal;
+  elements.planRecipeSelect.value = "";
+  fillPlanRecipes(meal);
   elements.planRecipeField.hidden = Boolean(recipe);
-  elements.planRecipeTitle.textContent = recipe ? recipe.title : "Choose a recipe for this night.";
+  elements.planRecipeSelect.required = !recipe;
+  elements.planRecipeTitle.textContent = recipe ? recipe.title : "Choose a recipe, a day and a meal.";
+  updatePlanReplaces();
   elements.planDialog.showModal();
+}
+
+function longDay(key) {
+  return new Date(`${key}T12:00:00`).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
 // "November 16-22, 2026", or "Nov 30 - Dec 6, 2026" across a month boundary.
@@ -790,17 +832,63 @@ function weekRangeLabel(start, end) {
   return `${start.toLocaleDateString(undefined, short)} - ${end.toLocaleDateString(undefined, short)}, ${end.getFullYear()}`;
 }
 
+function mealSlot(key, meal, recipeId) {
+  const slot = document.createElement("div");
+  slot.className = "meal-slot";
+  slot.dataset.meal = meal.id;
+  const recipe = recipeId ? state.recipes.find((item) => item.id === recipeId) : null;
+  const where = `${meal.label.toLowerCase()} on ${longDay(key)}`;
+  if (!recipe) {
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "meal-add";
+    add.textContent = `+ ${meal.label}`;
+    add.setAttribute("aria-label", `Choose a recipe for ${where}`);
+    add.dataset.focusKey = `plan-add:${key}:${meal.id}`;
+    add.addEventListener("click", () => openPlanDialog(null, key, meal.id));
+    slot.append(add);
+    return slot;
+  }
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "meal-open";
+  const name = document.createElement("span");
+  name.className = "meal-name";
+  name.textContent = meal.label;
+  const title = document.createElement("span");
+  title.className = "meal-title";
+  title.textContent = recipe.title;
+  open.append(name, title);
+  open.setAttribute("aria-label", `Open ${recipe.title}, ${where}`);
+  open.dataset.focusKey = `plan-open:${key}:${meal.id}`;
+  open.addEventListener("click", () => openRecipe(recipe));
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "meal-remove";
+  remove.textContent = GLYPH.times;
+  remove.setAttribute("aria-label", `Remove ${recipe.title} from ${where}`);
+  remove.dataset.focusKey = `plan-remove:${key}:${meal.id}`;
+  remove.addEventListener("click", () => {
+    state.planner = removeMeal(state.planner, key, meal.id);
+    saveProfile("planner");
+    preserveFocus(renderPlanner);
+    renderStats();
+  });
+  slot.append(open, remove);
+  return slot;
+}
+
 function renderPlanner() {
   const start = state.weekStart;
   const end = addDays(start, 6);
+  const today = dateKey(new Date());
   elements.weekTitle.textContent = weekRangeLabel(start, end);
   elements.plannerGrid.replaceChildren(...Array.from({ length: 7 }, (_, index) => {
     const date = addDays(start, index);
     const key = dateKey(date);
-    const dayName = date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-    const recipe = state.recipes.find((item) => item.id === state.planner[key]);
+    const planned = mealsOf(state.planner[key]);
     const day = document.createElement("article");
-    day.className = `planner-day${key === dateKey(new Date()) ? " today" : ""}`;
+    day.className = `planner-day${key === today ? " today" : ""}`;
     const header = document.createElement("header");
     const name = document.createElement("h3");
     name.textContent = date.toLocaleDateString(undefined, { weekday: "short" });
@@ -808,48 +896,7 @@ function renderPlanner() {
     number.dateTime = key;
     number.textContent = date.getDate();
     header.append(name, number);
-    day.append(header);
-    if (recipe) {
-      const card = document.createElement("div");
-      card.className = "planned-card";
-      const image = document.createElement("img");
-      image.src = recipe.image;
-      image.alt = "";
-      const title = document.createElement("strong");
-      title.textContent = recipe.title;
-      const open = document.createElement("button");
-      open.type = "button";
-      open.textContent = "Open recipe";
-      open.setAttribute("aria-label", `Open ${recipe.title}, planned for ${dayName}`);
-      open.dataset.focusKey = `plan-open:${key}`;
-      open.addEventListener("click", () => openRecipe(recipe));
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.textContent = "Remove";
-      remove.setAttribute("aria-label", `Remove ${recipe.title} from ${dayName}`);
-      remove.dataset.focusKey = `plan-remove:${key}`;
-      remove.addEventListener("click", () => {
-        delete state.planner[key];
-        saveProfile("planner");
-        preserveFocus(renderPlanner);
-        renderStats();
-      });
-      card.append(image, title, open, remove);
-      day.append(card);
-    } else {
-      const empty = document.createElement("div");
-      empty.className = "empty-plan";
-      const label = document.createElement("span");
-      label.textContent = "Dinner is open";
-      const add = document.createElement("button");
-      add.type = "button";
-      add.textContent = "+ Choose recipe";
-      add.setAttribute("aria-label", `Choose a recipe for ${dayName}`);
-      add.dataset.focusKey = `plan-add:${key}`;
-      add.addEventListener("click", () => openPlanDialog(null, key));
-      empty.append(label, add);
-      day.append(empty);
-    }
+    day.append(header, ...MEALS.map((meal) => mealSlot(key, meal, planned[meal.id])));
     return day;
   }));
 }
@@ -1413,11 +1460,8 @@ async function uploadLegacyBrowserLists() {
   const before = state.favorites.size;
   for (const id of Array.isArray(favorites) ? favorites : []) state.favorites.add(id);
   if (state.favorites.size !== before) changed.push("favorites");
-  let plannerAdded = false;
-  for (const [date, recipeId] of Object.entries(planner && typeof planner === "object" ? planner : {})) {
-    if (!state.planner[date]) { state.planner[date] = recipeId; plannerAdded = true; }
-  }
-  if (plannerAdded) changed.push("planner");
+  const merged = mergePlans(state.planner, planner);
+  if (merged.added) { state.planner = merged.planner; changed.push("planner"); }
   const known = new Set(state.shopping.map((item) => item.id));
   const extra = (Array.isArray(shopping) ? shopping : []).filter((item) => item?.id && item?.text && !known.has(item.id));
   if (extra.length) { state.shopping.push(...extra); changed.push("shopping"); }
@@ -1627,8 +1671,16 @@ function setupEvents() {
   elements.planForm.addEventListener("submit", (event) => {
     event.preventDefault();
     const recipeId = state.pendingPlanRecipeId || elements.planRecipeSelect.value;
-    state.planner[elements.planDate.value] = recipeId;
-    saveProfile("planner"); elements.planDialog.close(); renderPlanner(); renderStats(); showToast("Dinner added to the meal plan.");
+    const date = elements.planDate.value;
+    const meal = chosenMeal();
+    if (!recipeId || !date) return;
+    state.planner = setMeal(state.planner, date, meal, recipeId);
+    saveProfile("planner"); elements.planDialog.close(); renderPlanner(); renderStats();
+    showToast(`Added to ${mealLabel(meal).toLowerCase()} on ${longDay(date)}.`);
+  });
+  elements.planForm.addEventListener("change", (event) => {
+    if (event.target.name === "meal" && !elements.planRecipeField.hidden) fillPlanRecipes(chosenMeal());
+    updatePlanReplaces();
   });
   elements.previousWeekButton.addEventListener("click", () => { state.weekStart = addDays(state.weekStart, -7); renderPlanner(); });
   elements.nextWeekButton.addEventListener("click", () => { state.weekStart = addDays(state.weekStart, 7); renderPlanner(); });
