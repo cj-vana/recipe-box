@@ -1265,6 +1265,16 @@ function cleanStepLine(line) {
   return String(line).replace(/^\s*(?:step\s*)?\d+\s*[.):-]\s*/i, "").trim();
 }
 
+// "Bake for 20 minutes until bubbling." is a step, not a time. A time or yield line has a colon
+// ("Bake time: 25 min") or, outside the steps, is just a short number ("Serves 4", "Prep 10 min").
+function recipeMetaLine(line, section) {
+  const meta = line.match(RECIPE_META_PATTERN);
+  if (!meta) return null;
+  const labelled = /^[^:]{1,24}:/.test(line);
+  const shortValue = /^(about\s+)?\d/i.test(meta[2]) && meta[2].split(/\s+/).length <= 4;
+  return labelled || (section !== "steps" && shortValue) ? meta : null;
+}
+
 // Best-effort parse of a whole pasted recipe into form-ready fields. Handles
 // both sectioned text ("Ingredients:" / "Instructions:") and free-form pastes.
 function parsePastedRecipe(text) {
@@ -1277,7 +1287,7 @@ function parsePastedRecipe(text) {
     if (!line) continue;
     if (/^(ingredients?|what you need|you will need)\s*:?$/i.test(line)) { section = "ingredients"; continue; }
     if (/^(instructions?|directions?|method|preparation|steps?|what to do)\s*:?$/i.test(line)) { section = "steps"; continue; }
-    const meta = line.match(RECIPE_META_PATTERN);
+    const meta = recipeMetaLine(line, section);
     if (meta) {
       const label = meta[1].toLowerCase();
       if (/^(serves|servings?|yield|makes)/.test(label)) {
@@ -1299,7 +1309,7 @@ function parsePastedRecipe(text) {
   if (!recipe.cookMinutes && totalMinutes) recipe.cookMinutes = Math.max(0, totalMinutes - recipe.prepMinutes) || totalMinutes;
   if (!recipe.ingredients.length && !recipe.steps.length) {
     // No section headers found: guess ingredients by leading quantities.
-    const body = lines.filter((line) => line && !RECIPE_META_PATTERN.test(line));
+    const body = lines.filter((line) => line && !recipeMetaLine(line, "intro"));
     recipe.title = body.shift() || recipe.title;
     for (const line of body) {
       if (/^[\d¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/.test(line) && line.length <= 140) recipe.ingredients.push(line);
