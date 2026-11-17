@@ -430,15 +430,19 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
   });
   el.profileForm.addEventListener("submit", submitProfile);
   el.passwordForm.addEventListener("submit", submitPassword);
+  // A message about a field that has since been changed no longer describes the form.
+  el.passwordForm.addEventListener("input", () => { el.passwordError.textContent = ""; });
   el.signOutButton.addEventListener("click", signOut);
   el.switchPersonButton.addEventListener("click", () => showSignIn({ canCancel: true }));
   el.signOutEverywhereButton.addEventListener("click", signOutEverywhere);
   el.addPersonButton.addEventListener("click", () => openPersonDialog());
   el.personForm.addEventListener("submit", submitPerson);
+  el.personForm.addEventListener("input", () => { el.personError.textContent = ""; });
   el.personForm.elements.role.addEventListener("change", showRoleHint);
   el.personShow.addEventListener("click", () => setPasswordVisible(el.personPassword, el.personShow, el.personPassword.type === "password"));
   el.generatePassword.addEventListener("click", () => {
     el.personPassword.value = generatePassphrase();
+    el.personError.textContent = "";
     setPasswordVisible(el.personPassword, el.personShow, true);
     el.personPassword.focus();
   });
