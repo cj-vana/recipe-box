@@ -4,6 +4,11 @@ import { generatePassphrase } from "./passphrase.js";
 
 const ELLIPSIS = String.fromCodePoint(0x2026);
 const ROLE_LABELS = { member: "Member", editor: "Editor", admin: "Admin" };
+const ROLE_HINTS = {
+  member: "Uses the recipes and keeps their own Kitchen Stock, journal and lists.",
+  editor: "Can also add, change and delete recipes.",
+  admin: "Can also manage people and download a backup.",
+};
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -21,10 +26,11 @@ function shortDate(iso) {
   return date.toLocaleDateString(undefined, options);
 }
 
+// The button's word says what pressing it does next, so it carries no pressed state.
 function setPasswordVisible(input, button, visible) {
   input.type = visible ? "text" : "password";
-  button.setAttribute("aria-pressed", String(visible));
   button.textContent = visible ? "Hide" : "Show";
+  button.setAttribute("aria-label", visible ? "Hide password" : "Show password");
 }
 
 export function setupAccount({ getSession, setSession, toast, onSignedIn, onSignedOut }) {
@@ -43,7 +49,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     personDialog: $("#personDialog"), personForm: $("#personForm"), personTitle: $("#personDialogTitle"),
     personError: $("#personError"), personSubmit: $("#personSubmit"), personShow: $("#personShowPassword"),
     personPassword: $("#personPassword"), personPasswordLabel: $("#personPasswordLabel"),
-    personPasswordHint: $("#personPasswordHint"), personRoleField: $("#personRoleField"),
+    personPasswordHint: $("#personPasswordHint"), personRoleHint: $("#personRoleHint"),
     generatePassword: $("#generatePasswordButton"), deletePerson: $("#deletePersonButton"),
     togglePerson: $("#togglePersonButton"),
     shareDialog: $("#shareDialog"), shareTitle: $("#shareTitle"), shareText: $("#shareText"),
@@ -219,8 +225,10 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
   function personStatus(person) {
     if (person.disabled) return "Sign-in turned off";
     if (!person.hasPassword) return person.owner ? "Owner, no password yet" : "No password yet";
-    const last = person.lastSignInAt ? `last signed in ${shortDate(person.lastSignInAt)}` : "has not signed in yet";
-    return person.owner ? `Owner, ${last}` : last.charAt(0).toUpperCase() + last.slice(1);
+    const last = person.lastSignInAt ? `last signed in ${shortDate(person.lastSignInAt)}` : "";
+    // The Owner uses Recipe Box at home without signing in, so "not signed in yet" would mislead.
+    if (person.owner) return `Owner, ${last || "no sign-in needed at home"}`;
+    return last ? last.charAt(0).toUpperCase() + last.slice(1) : "Has not signed in yet";
   }
 
   function renderPeople() {
@@ -269,6 +277,12 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     (edit || el.addPersonButton).focus();
   }
 
+  // What the chosen role can do, under the picker (the options hold only the role's name).
+  function showRoleHint() {
+    const role = el.personForm.elements.role;
+    el.personRoleHint.textContent = role.disabled ? "The owner stays an admin." : ROLE_HINTS[role.value] || "";
+  }
+
   function openPersonDialog(person = null) {
     editing = person;
     el.personForm.reset();
@@ -280,7 +294,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     fields.username.value = person?.username || "";
     fields.role.value = person?.role || "member";
     fields.role.disabled = Boolean(person?.owner);
-    el.personRoleField.title = person?.owner ? "The owner stays an admin." : "";
+    showRoleHint();
     el.personPasswordLabel.textContent = person ? "New password" : "Password";
     el.personPassword.required = !person;
     el.personPasswordHint.textContent = person
@@ -403,6 +417,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
   el.signOutEverywhereButton.addEventListener("click", signOutEverywhere);
   el.addPersonButton.addEventListener("click", () => openPersonDialog());
   el.personForm.addEventListener("submit", submitPerson);
+  el.personForm.elements.role.addEventListener("change", showRoleHint);
   el.personShow.addEventListener("click", () => setPasswordVisible(el.personPassword, el.personShow, el.personPassword.type === "password"));
   el.generatePassword.addEventListener("click", () => {
     el.personPassword.value = generatePassphrase();

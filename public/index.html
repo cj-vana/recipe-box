@@ -30,7 +30,7 @@
             <label for="signInPassword">Password</label>
             <div class="password-row">
               <input id="signInPassword" name="password" type="password" autocomplete="current-password" required>
-              <button class="button button-quiet" id="signInShowPassword" type="button" aria-pressed="false" aria-controls="signInPassword">Show</button>
+              <button class="button button-quiet" id="signInShowPassword" type="button" aria-label="Show password" aria-controls="signInPassword">Show</button>
             </div>
           </div>
           <p class="form-error" id="signInError" role="alert"></p>
@@ -110,9 +110,10 @@
           <div class="filter-row" id="filterRow" role="group" aria-label="Filter recipes" data-focus-scope></div>
           <div class="recipe-grid" id="recipeGrid" data-focus-scope></div>
           <div class="empty-state" id="emptyState" hidden>
-            <span>No recipes match.</span>
-            <p>Try another word or filter.</p>
+            <span id="emptyTitle">No recipes match.</span>
+            <p id="emptyText">Try another word or filter.</p>
             <button class="button button-ink" id="clearFilters" type="button">Show every recipe</button>
+            <button class="button button-red" id="emptyAddButton" type="button" hidden>Add recipe</button>
           </div>
         </section>
       </section>
@@ -164,7 +165,7 @@
       <section class="app-view utility-view" id="shoppingView" data-app-view="shopping" hidden>
         <div class="tool-heading">
           <div><h1>Shopping list</h1><p>Add ingredients from a recipe or type anything else.</p></div>
-          <button class="button button-quiet" id="clearCheckedButton" type="button">Clear checked</button>
+          <div class="heading-actions"><button class="button button-quiet" id="clearCheckedButton" type="button">Clear checked</button></div>
         </div>
         <form class="shopping-add" id="shoppingForm"><input id="shoppingInput" required placeholder="Add an item" aria-label="Item to add"><button class="button button-red" type="submit">Add</button></form>
         <div class="shopping-list" id="shoppingList" data-focus-scope></div>
@@ -367,18 +368,20 @@
         <div class="field-grid">
           <label class="field">Name<input name="displayName" required maxlength="60" autocomplete="off"></label>
           <label class="field">Username<input name="username" required maxlength="32" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
-          <label class="field field-wide" id="personRoleField">Role
-            <select name="role">
-              <option value="member">Member: uses the recipes and their own lists</option>
-              <option value="editor">Editor: can also add and change recipes</option>
-              <option value="admin">Admin: can also manage people</option>
+          <div class="field field-wide" id="personRoleField">
+            <label for="personRole">Role</label>
+            <select id="personRole" name="role" aria-describedby="personRoleHint">
+              <option value="member">Member</option>
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
             </select>
-          </label>
+            <small class="field-hint" id="personRoleHint"></small>
+          </div>
           <div class="field field-wide">
             <label for="personPassword" id="personPasswordLabel">Password</label>
             <div class="password-row">
               <input id="personPassword" name="password" type="password" autocomplete="new-password" aria-describedby="personPasswordHint">
-              <button class="button button-quiet" id="personShowPassword" type="button" aria-pressed="false" aria-controls="personPassword">Show</button>
+              <button class="button button-quiet" id="personShowPassword" type="button" aria-label="Show password" aria-controls="personPassword">Show</button>
               <button class="button button-quiet" id="generatePasswordButton" type="button">Generate</button>
             </div>
             <small class="field-hint" id="personPasswordHint"></small>

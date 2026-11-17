@@ -97,7 +97,8 @@ const elements = {
   newEmpty: $("#newEmpty"), profileButton: $("#profileButton"), profileInitials: $("#profileInitials"),
   profileName: $("#profileName"), personDialog: $("#personDialog"), shareDialog: $("#shareDialog"),
   emptyState: $("#emptyState"), favoriteButton: $("#favoriteButton"), filterRow: $("#filterRow"),
-  formError: $("#formError"), heroFeature: $("#heroFeature"),
+  emptyTitle: $("#emptyTitle"), emptyText: $("#emptyText"), emptyAddButton: $("#emptyAddButton"),
+  formError: $("#formError"), hero: $(".hero"), heroFeatureWrap: $(".hero-feature-wrap"), heroFeature: $("#heroFeature"),
   heroImage: $("#heroImage"), heroRecipeMeta: $("#heroRecipeMeta"), heroRecipeTitle: $("#heroRecipeTitle"),
   ingredientList: $("#ingredientList"), installButton: $("#installButton"), installHelp: $("#installHelp"),
   leftoverNote: $("#leftoverNote"), recipeCount: $("#recipeCount"), recipeDialog: $("#recipeDialog"),
@@ -400,6 +401,14 @@ function renderRecipes() {
   const recipes = filteredRecipes();
   elements.recipeGrid.replaceChildren(...recipes.map((recipe, index) => createCard(recipe, index)));
   elements.emptyState.hidden = recipes.length > 0;
+  // An empty library is not a search with no results: say so, and offer to add the first recipe.
+  const libraryEmpty = state.recipes.length === 0;
+  elements.emptyTitle.textContent = libraryEmpty ? "No recipes yet." : "No recipes match.";
+  elements.emptyText.textContent = !libraryEmpty
+    ? "Try another word or filter."
+    : can("editor") ? "Add the first one to start the collection." : "Recipes show up here once someone adds them.";
+  elements.clearFilters.hidden = libraryEmpty;
+  elements.emptyAddButton.hidden = !libraryEmpty || !can("editor");
 }
 
 // The New view: recipes added this month, or the latest month that had additions.
@@ -427,6 +436,9 @@ function renderNew() {
 function renderHero() {
   const choices = suggestedRecipes();
   const recipe = choices[state.suggestionOffset % Math.max(1, Math.min(choices.length, 8))];
+  // With no recipes there is nothing to suggest: hide the card instead of the page's placeholder.
+  elements.heroFeatureWrap.hidden = !recipe;
+  elements.hero.classList.toggle("hero-empty", !recipe);
   if (!recipe) return;
   elements.heroImage.src = recipe.image;
   elements.heroImage.alt = "";
@@ -1713,6 +1725,7 @@ function setupEvents() {
     elements.searchInput.focus();
   });
   elements.addButton.addEventListener("click", () => openRecipeForm());
+  elements.emptyAddButton.addEventListener("click", () => openRecipeForm());
   elements.editRecipeButton.addEventListener("click", () => state.activeRecipe && openRecipeForm(state.activeRecipe));
   elements.deleteRecipeButton.addEventListener("click", deleteRecipe);
   elements.profileButton.addEventListener("click", () => account.openSettings());
