@@ -192,6 +192,28 @@ test("wrong current passwords count across addresses when changing a password", 
   app.users.limiter.clear();
 });
 
+test("sign-in names no account can have never reach another counter, but still count against the address", async () => {
+  app.users.limiter.clear();
+  const created = await call(home, "/api/users", { method: "POST", body: { displayName: "Kim", username: "kim", role: "member", password: "basil-onion-kim-66" } });
+  assert.equal(created.status, 201);
+  const { cookie } = await signIn("kim", "basil-onion-kim-66", { "cf-connecting-ip": "198.51.100.62" });
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = await signIn(`password:${created.json.user.id}`, `wrong-${attempt}-password`, { "cf-connecting-ip": `203.0.113.${attempt + 1}` });
+    assert.equal(result.status, 401, `attempt ${attempt}`);
+  }
+  const change = await call(outside, "/api/me/password", {
+    method: "POST", cookie, body: { currentPassword: "basil-onion-kim-66", newPassword: "a-brand-new-password-2" }, headers: { "cf-connecting-ip": "203.0.113.231" },
+  });
+  assert.equal(change.status, 200, "sign-in attempts cannot pause Kim's password change");
+  await call(home, `/api/users/${created.json.user.id}`, { method: "DELETE" });
+  const visitor = { "cf-connecting-ip": "198.51.100.77" };
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    assert.equal((await signIn("not a name!", "wrong-password-x", visitor)).status, 401, `attempt ${attempt}`);
+  }
+  assert.equal((await signIn("not a name!", "wrong-password-x", visitor)).status, 429, "names no account can have still count against the address");
+  app.users.limiter.clear();
+});
+
 test("only the Owner can change the Owner's account", async () => {
   const owner = app.users.owner();
   const admin = await call(home, "/api/users", { method: "POST", body: { displayName: "Second Admin", username: "admin2", role: "admin", password: "basil-onion-admin-77" } });

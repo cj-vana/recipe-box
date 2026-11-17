@@ -42,13 +42,26 @@ test("a flood of addresses never pushes out a username count, and each count sta
   assert.equal(limiter.recent("u:203.0.113.1|erin").length, 1, "evicted address counters start again");
 });
 
-test("username counts have their own limit and the oldest go first, real names included", () => {
-  const limiter = new AttemptLimiter({ maxUsernames: 30 });
-  limiter.fail("203.0.113.1", "erin");
-  for (let index = 0; index < 100; index += 1) limiter.fail("203.0.113.2", `guess-${index}`);
-  assert.ok(limiter.usernames.size <= 30, `username counters ${limiter.usernames.size}`);
-  assert.equal(limiter.recent("n:erin").length, 0, "a real name is pushed out like any other, so a flood tells nothing");
-  assert.equal(limiter.recent("n:guess-99").length, 1, "the newest counts stay");
+test("a flood of names never pushes out a live username count, and names without a slot wait", () => {
+  const time = clock();
+  const limiter = new AttemptLimiter({ maxUsernames: 30, now: time.now });
+  for (let index = 0; index < 20; index += 1) limiter.fail(`203.0.113.${index + 1}`, "erin");
+  for (let index = 0; index < 100; index += 1) limiter.fail(`198.51.100.${index}`, `guess-${index}`);
+  assert.equal(limiter.usernames.size, 30, "the cap holds");
+  assert.equal(limiter.recent("n:erin").length, 20, "erin's count survives the flood");
+  assert.ok(limiter.waitMinutes("192.0.2.1", "erin") > 0, "erin stays paused for new addresses");
+  assert.ok(limiter.waitMinutes("192.0.2.1", "guess-99") > 0, "a name with no slot waits instead of going uncounted");
+  assert.equal(limiter.waitMinutes("192.0.2.1", "guess-99", { checkUsername: false }), 0, "the home network is not held up by a full table");
+  time.advance(15 * 60_000);
+  assert.equal(limiter.waitMinutes("192.0.2.1", "guess-99"), 0, "slots free when the window passes");
   limiter.clear();
   assert.equal(limiter.usernames.size + limiter.failures.size, 0, "clear forgets every count");
+});
+
+test("a failure with no username counts against the address only", () => {
+  const limiter = new AttemptLimiter();
+  for (let index = 0; index < 20; index += 1) limiter.fail("203.0.113.9", null);
+  assert.equal(limiter.usernames.size, 0);
+  assert.ok(limiter.waitMinutes("203.0.113.9", null) > 0, "the address is paused");
+  assert.equal(limiter.waitMinutes("203.0.113.10", null), 0, "other addresses are not");
 });
