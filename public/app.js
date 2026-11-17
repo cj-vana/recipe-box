@@ -1349,15 +1349,20 @@ async function handleImportUrl() {
   }
   elements.importUrlButton.disabled = true;
   elements.importUrlButton.textContent = `Importing${GLYPH.ellipsis}`;
+  // The button is disabled while it works, so focus cannot stay on it: go on to the filled
+  // form, or back to the link so it can be fixed.
+  let next = elements.importUrlInput;
   try {
     const payload = await api(`/api/recipes/import?url=${encodeURIComponent(target)}`);
     fillRecipeForm(payload.recipe);
     showToast(`Imported from ${payload.recipe.source}. Check it below, then save.`);
+    next = elements.recipeForm.elements.title;
   } catch (error) {
     elements.quickFillError.textContent = error.message;
   } finally {
     elements.importUrlButton.disabled = false;
     elements.importUrlButton.textContent = "Import";
+    next.focus();
   }
 }
 

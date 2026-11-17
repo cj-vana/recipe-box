@@ -316,12 +316,18 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     if (!fields.role.disabled) body.role = fields.role.value;
     if (!editing || password) body.password = password;
     el.personError.textContent = "";
-    if ((!editing || password) && password.length < 10) {
-      el.personError.textContent = "Passwords need at least 10 characters.";
-      el.personPassword.focus();
+    // Checked in the order the fields appear, so the first message is about the first gap.
+    const problem = !fields.displayName.value.trim() ? ["A name is required.", fields.displayName]
+      : !fields.username.value.trim() ? ["A username is required.", fields.username]
+        : (!editing || password) && password.length < 10 ? ["Passwords need at least 10 characters.", el.personPassword]
+          : null;
+    if (problem) {
+      el.personError.textContent = problem[0];
+      problem[1].focus();
       return;
     }
     el.personSubmit.disabled = true;
+    let failedField = null;
     try {
       const { user } = editing
         ? await api(`/api/users/${encodeURIComponent(editing.id)}`, { method: "PUT", body: JSON.stringify(body) })
@@ -333,9 +339,21 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
       else toast(`${user.displayName} saved.`);
     } catch (error) {
       el.personError.textContent = error.message;
+      failedField = fieldForError(error.message);
     } finally {
       el.personSubmit.disabled = false;
+      // The save button was disabled while it worked, so focus left it: go to what needs fixing.
+      failedField?.focus();
     }
+  }
+
+  function fieldForError(message) {
+    const fields = el.personForm.elements;
+    if (/username/i.test(message)) return fields.username;
+    if (/name is required/i.test(message)) return fields.displayName;
+    if (/password/i.test(message)) return el.personPassword;
+    if (/role|admin/i.test(message) && !fields.role.disabled) return fields.role;
+    return el.personSubmit;
   }
 
   async function togglePerson() {
