@@ -41,6 +41,8 @@ img { display: block; max-width: 100%; }
 
 :where(button, a, input, select, textarea, summary, [tabindex]):focus-visible { outline: 3px solid var(--red); outline-offset: 2px; }
 .cook-console :focus-visible, .cook-step-bar :focus-visible, .timer-dock :focus-visible { outline-color: var(--mustard); }
+/* A sheet taller than the window takes focus itself when its dialog opens; the ring goes inside, where the dialog does not clip it. */
+.form-sheet:focus-visible, .settings-sheet:focus-visible { outline: 3px solid var(--red); outline-offset: -3px; }
 
 body.booting .site-header, body.booting .view-nav, body.booting main, body.booting footer { visibility: hidden; }
 body.signing-in .site-header, body.signing-in .view-nav, body.signing-in main, body.signing-in footer { display: none; }
