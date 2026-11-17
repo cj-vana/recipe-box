@@ -30,7 +30,7 @@ test("serves the Recipe Box PWA shell and health endpoint", async () => {
   const manifest = await fetch(`${baseUrl}/manifest.webmanifest`);
   assert.equal(manifest.headers.get("content-type"), "application/manifest+json; charset=utf-8");
   const health = await fetch(`${baseUrl}/api/health`).then((response) => response.json());
-  assert.deepEqual({ status: health.status, recipes: health.recipes, version: health.version }, { status: "ok", recipes: 13, version: "2.1.0" });
+  assert.deepEqual({ status: health.status, recipes: health.recipes, version: health.version }, { status: "ok", recipes: 13, version: "3.0.0" });
 });
 
 test("lists normal recipes with finished-dish images and filters them", async () => {
@@ -51,7 +51,7 @@ test("serves a unique generated image for every seeded recipe", async () => {
   assert.equal(responses.every((response) => response.status === 200 && response.headers.get("content-type") === "image/webp"), true);
 });
 
-test("allows changes directly from the private network without a key", async () => {
+test("lets the Owner change recipes from the home network without signing in", async () => {
   const recipe = { title: "Test Soup", ingredients: [{ amount: "1 cup", item: "broth" }], steps: ["Warm the broth."] };
   const allowed = await fetch(`${baseUrl}/api/recipes`, { method: "POST", headers: jsonHeaders, body: JSON.stringify(recipe) });
   assert.equal(allowed.status, 201);

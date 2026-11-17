@@ -4,10 +4,12 @@ services:
     container_name: recipe-box
     restart: unless-stopped
     ports:
-      # Loopback only by default; put your own reverse proxy or VPN in
-      # front for remote access. To listen on a LAN address, add e.g.
-      # - "192.168.1.10:13002:8080"
+      # Home port: no sign-in, acts as the Owner. Keep it on loopback or your LAN,
+      # e.g. add - "192.168.1.10:13002:8080" to reach it from other devices.
       - "127.0.0.1:13002:8080"
+      # Sign-in port: every API call needs an account. Point a tunnel or reverse
+      # proxy here, never at the home port.
+      - "127.0.0.1:13012:8081"
     volumes:
       - recipe-box-data:/app/data
 

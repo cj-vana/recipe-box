@@ -1,11 +1,14 @@
 import { createServer } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RecipeStore } from "./lib/store.js";
+import { SESSION_DAYS, UserStore } from "./lib/users.js";
 import { handleMcpMessage } from "./lib/mcp.js";
 import { extractRecipeFromHtml } from "./lib/recipe-import.js";
+import { fetchPageText } from "./lib/safe-fetch.js";
 
 const { version: APP_VERSION } = createRequire(import.meta.url)("./package.json");
 
@@ -13,6 +16,13 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(rootDir, "public");
 const seedFile = path.join(rootDir, "data", "seed-recipes.json");
 const defaultDataFile = path.join(rootDir, "data", "runtime", "recipes.json");
+
+const SESSION_COOKIE = "rb_session";
+// Requests that came through Cloudflare carry these. On the home listener they mean a tunnel
+// route points at the home port by mistake, so they get the outside rules (sign-in required).
+const CLOUDFLARE_HEADERS = ["cf-ray", "cf-connecting-ip", "cdn-loop"];
+const ROLE_RANK = { member: 1, editor: 2, admin: 3 };
+const ACCESS_RANK = { person: 1, editor: 2, admin: 3 };
 
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
@@ -27,18 +37,19 @@ const MIME_TYPES = {
   ".webp": "image/webp",
 };
 
+function httpError(status, message) {
+  return Object.assign(new Error(message), { status });
+}
+
 function sendJson(response, status, value, extraHeaders = {}) {
   const body = value === null ? "" : JSON.stringify(value);
   response.writeHead(status, {
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(body),
+    "cache-control": "no-store",
     ...extraHeaders,
   });
   response.end(body);
-}
-
-function sendError(response, status, message) {
-  sendJson(response, status, { error: message });
 }
 
 async function readJson(request, limit = 512_000) {
@@ -46,22 +57,67 @@ async function readJson(request, limit = 512_000) {
   const chunks = [];
   for await (const chunk of request) {
     size += chunk.length;
-    if (size > limit) throw Object.assign(new Error("Request body is too large."), { status: 413 });
+    if (size > limit) throw httpError(413, "Request body is too large.");
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
+  const type = String(request.headers["content-type"] || "").toLowerCase();
+  if (!type.startsWith("application/json")) throw httpError(415, "Send the request body as JSON.");
   try {
-    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    const value = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    return value && typeof value === "object" ? value : {};
   } catch {
-    throw Object.assign(new Error("Request body must be valid JSON."), { status: 400 });
+    throw httpError(400, "Request body must be valid JSON.");
   }
+}
+
+function parseCookies(header) {
+  const cookies = {};
+  for (const part of String(header || "").split(";")) {
+    const index = part.indexOf("=");
+    if (index < 1) continue;
+    const name = part.slice(0, index).trim();
+    if (!(name in cookies)) cookies[name] = part.slice(index + 1).trim();
+  }
+  return cookies;
+}
+
+function requestZone(request, listenerZone) {
+  if (listenerZone === "public") return "public";
+  return CLOUDFLARE_HEADERS.some((name) => request.headers[name]) ? "public" : "home";
+}
+
+// The visitor's address for sign-in throttling. The public port is only published on
+// loopback for cloudflared, so its forwarded address can be trusted there.
+function clientAddress(request, zone) {
+  if (zone === "public") {
+    const forwarded = String(request.headers["cf-connecting-ip"] || String(request.headers["x-forwarded-for"] || "").split(",")[0]).trim();
+    if (net.isIP(forwarded)) return forwarded;
+  }
+  return request.socket.remoteAddress || "unknown";
+}
+
+function isHttps(request) {
+  if (String(request.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https") return true;
+  return /"scheme"\s*:\s*"https"/.test(String(request.headers["cf-visitor"] || ""));
+}
+
+function sessionCookie(request, token, maxAgeSeconds) {
+  const parts = [`${SESSION_COOKIE}=${token}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAgeSeconds}`];
+  if (isHttps(request)) parts.push("Secure");
+  return parts.join("; ");
+}
+
+// Browsers say where a request came from. Anything that changes data must come from this
+// app's own pages (or from a client that is not a browser, such as an MCP client or curl).
+function assertSameOrigin(request) {
+  const site = request.headers["sec-fetch-site"];
+  if (site && site !== "same-origin" && site !== "none") throw httpError(403, "Requests from other sites are not allowed.");
 }
 
 async function lookupProduct(barcode) {
   const code = String(barcode || "").replace(/\s/g, "");
-  if (!/^[0-9]{6,18}$/.test(code)) {
-    throw Object.assign(new Error("Enter a valid grocery barcode."), { status: 400 });
-  }
+  if (!/^[0-9]{6,18}$/.test(code)) throw httpError(400, "Enter a valid grocery barcode.");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   try {
@@ -70,7 +126,7 @@ async function lookupProduct(barcode) {
       headers: { "user-agent": "RecipeBox/2.0 (private personal cookbook)" },
       signal: controller.signal,
     });
-    if (!response.ok) throw Object.assign(new Error("Product lookup is unavailable right now."), { status: 502 });
+    if (!response.ok) throw httpError(502, "Product lookup is unavailable right now.");
     const payload = await response.json();
     if (payload.status !== 1 || !payload.product) return { found: false, barcode: code };
     const product = payload.product;
@@ -84,55 +140,35 @@ async function lookupProduct(barcode) {
       source: "Open Food Facts",
     };
   } catch (error) {
-    if (error.name === "AbortError") throw Object.assign(new Error("Product lookup timed out. You can enter the name manually."), { status: 504 });
+    if (error.name === "AbortError") throw httpError(504, "Product lookup timed out. You can enter the name manually.");
     throw error;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function importRecipeFromUrl(rawUrl) {
-  let target;
-  try {
-    target = new URL(String(rawUrl || ""));
-  } catch {
-    throw Object.assign(new Error("Enter a valid recipe URL."), { status: 400 });
-  }
-  if (!/^https?:$/.test(target.protocol)) {
-    throw Object.assign(new Error("Only http and https recipe URLs are supported."), { status: 400 });
-  }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const response = await fetch(target, {
-      signal: controller.signal,
-      redirect: "follow",
-      headers: {
-        "user-agent": `RecipeBox/${APP_VERSION} (self-hosted recipe library)`,
-        accept: "text/html,application/xhtml+xml",
-      },
-    });
-    if (!response.ok) throw Object.assign(new Error(`That page responded with ${response.status}.`), { status: 502 });
-    const html = (await response.text()).slice(0, 2_000_000);
-    const recipe = extractRecipeFromHtml(html, target.toString());
-    if (!recipe) {
-      throw Object.assign(new Error("No structured recipe found on that page. Paste the recipe text into Quick fill instead."), { status: 422 });
-    }
-    return { recipe };
-  } catch (error) {
-    if (error.name === "AbortError") throw Object.assign(new Error("Fetching that page timed out."), { status: 504 });
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
+// From outside the home network the page fetch refuses private addresses on every hop.
+async function importRecipeFromUrl(rawUrl, { guard }) {
+  const page = await fetchPageText(rawUrl, {
+    guard,
+    headers: { "user-agent": `RecipeBox/${APP_VERSION} (self-hosted recipe library)`, accept: "text/html,application/xhtml+xml" },
+  });
+  if (page.status < 200 || page.status >= 300) throw httpError(502, `That page responded with ${page.status}.`);
+  const recipe = extractRecipeFromHtml(page.text, page.url);
+  if (!recipe) throw httpError(422, "No structured recipe found on that page. Paste the recipe text into Quick fill instead.");
+  return { recipe };
 }
 
 async function serveStatic(request, response, pathname) {
   const requested = pathname === "/" ? "/index.html" : pathname;
-  const decoded = decodeURIComponent(requested);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(requested);
+  } catch {
+    return false;
+  }
   const filePath = path.resolve(publicDir, `.${decoded}`);
   if (!filePath.startsWith(`${publicDir}${path.sep}`)) return false;
-
   try {
     const info = await stat(filePath);
     if (!info.isFile()) return false;
@@ -153,164 +189,308 @@ async function serveStatic(request, response, pathname) {
   }
 }
 
+// Access levels: "open" (anyone), "person" (signed in, or the Owner on the home network),
+// "editor", "admin", and "home" (home network only, acting as the Owner).
+function buildRoutes({ store, users }) {
+  const me = (ctx) => ctx.user.id;
+  const sessionPayload = (ctx, user = ctx.user, signedIn = ctx.signedIn) => ({
+    user: users.publicUser(user), zone: ctx.zone, signedIn, homeNetwork: ctx.zone === "home",
+  });
+  const decodeId = (value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      throw httpError(400, "Bad id.");
+    }
+  };
+
+  return [
+    {
+      method: "GET", path: "/api/health", access: "open",
+      handler: ({ response, ctx }) => sendJson(response, 200, ctx.zone === "public"
+        ? { status: "ok" }
+        : { status: "ok", ...store.counts(), version: APP_VERSION }),
+    },
+    {
+      method: "GET", path: "/api/session", access: "open",
+      handler: ({ request, response, ctx }) => {
+        if (!ctx.stale) return sendJson(response, 200, sessionPayload(ctx));
+        response.setHeader("set-cookie", sessionCookie(request, "", 0));
+        return sendJson(response, 200, sessionPayload(ctx, ctx.zone === "home" ? users.owner() : null, false));
+      },
+    },
+    {
+      method: "POST", path: "/api/session", access: "open",
+      handler: async ({ request, response, ctx }) => {
+        const body = await readJson(request, 16_000);
+        const { token, user } = await users.signIn(body.username, body.password, { address: ctx.address });
+        if (ctx.token) await users.signOut(ctx.token);
+        response.setHeader("set-cookie", sessionCookie(request, token, SESSION_DAYS * 86_400));
+        sendJson(response, 200, { ...sessionPayload(ctx, null, true), user });
+      },
+    },
+    {
+      method: "DELETE", path: "/api/session", access: "open",
+      handler: async ({ request, response, ctx }) => {
+        await users.signOut(ctx.token);
+        response.setHeader("set-cookie", sessionCookie(request, "", 0));
+        sendJson(response, 200, sessionPayload(ctx, ctx.zone === "home" ? users.owner() : null, false));
+      },
+    },
+    {
+      method: "DELETE", path: "/api/sessions", access: "person",
+      handler: async ({ request, response, ctx }) => {
+        await users.signOutEverywhere(me(ctx));
+        if (ctx.signedIn) response.setHeader("set-cookie", sessionCookie(request, "", 0));
+        // Every session for this person is gone, this browser's included.
+        sendJson(response, 200, sessionPayload(ctx, ctx.zone === "home" ? users.owner() : null, false));
+      },
+    },
+    {
+      method: "PUT", path: "/api/me", access: "person",
+      handler: async ({ request, response, ctx }) => sendJson(response, 200, { user: await users.updateSelf(me(ctx), await readJson(request, 16_000)) }),
+    },
+    {
+      method: "POST", path: "/api/me/password", access: "person",
+      handler: async ({ request, response, ctx }) => {
+        const body = await readJson(request, 16_000);
+        const user = await users.changePassword(me(ctx), {
+          current: body.currentPassword, next: body.newPassword, keepToken: ctx.token, address: ctx.address,
+          requireCurrent: ctx.signedIn || ctx.zone !== "home",
+        });
+        sendJson(response, 200, { user });
+      },
+    },
+    { method: "GET", path: "/api/profile", access: "person", handler: ({ response, ctx }) => sendJson(response, 200, { profile: store.getProfile(me(ctx)) }) },
+    {
+      method: "PUT", path: "/api/profile", access: "person",
+      handler: async ({ request, response, ctx }) => sendJson(response, 200, { profile: await store.updateProfile(me(ctx), await readJson(request)) }),
+    },
+    {
+      method: "GET", path: "/api/recipes", access: "person",
+      handler: ({ response, url }) => sendJson(response, 200, {
+        recipes: store.list({
+          search: url.searchParams.get("search") || "",
+          category: url.searchParams.get("category") || "",
+          tag: url.searchParams.get("tag") || "",
+        }),
+      }),
+    },
+    {
+      method: "POST", path: "/api/recipes", access: "editor",
+      handler: async ({ request, response }) => sendJson(response, 201, { recipe: await store.add(await readJson(request)) }),
+    },
+    {
+      method: "GET", path: "/api/recipes/import", access: "editor",
+      handler: async ({ response, url, ctx }) => sendJson(response, 200, await importRecipeFromUrl(url.searchParams.get("url"), { guard: ctx.zone === "public" })),
+    },
+    {
+      method: "GET", path: /^\/api\/recipes\/([^/]+)$/, access: "person",
+      handler: ({ response, params }) => {
+        const recipe = store.get(decodeId(params[0]));
+        return recipe ? sendJson(response, 200, { recipe }) : sendJson(response, 404, { error: "Recipe not found." });
+      },
+    },
+    {
+      method: "PUT", path: /^\/api\/recipes\/([^/]+)$/, access: "editor",
+      handler: async ({ request, response, params }) => {
+        const recipe = await store.update(decodeId(params[0]), await readJson(request));
+        return recipe ? sendJson(response, 200, { recipe }) : sendJson(response, 404, { error: "Recipe not found." });
+      },
+    },
+    {
+      method: "DELETE", path: /^\/api\/recipes\/([^/]+)$/, access: "editor",
+      handler: async ({ response, params }) => (await store.remove(decodeId(params[0])))
+        ? sendJson(response, 200, { success: true }) : sendJson(response, 404, { error: "Recipe not found." }),
+    },
+    {
+      method: "GET", path: "/api/history", access: "person",
+      handler: ({ response, url, ctx }) => sendJson(response, 200, {
+        history: store.listHistory({ userId: me(ctx), recipeId: url.searchParams.get("recipeId") || "", limit: url.searchParams.get("limit") || 200 }),
+      }),
+    },
+    {
+      method: "POST", path: "/api/history", access: "person",
+      handler: async ({ request, response, ctx }) => sendJson(response, 201, { entry: await store.logMade(await readJson(request), me(ctx)) }),
+    },
+    {
+      method: "DELETE", path: /^\/api\/history\/([^/]+)$/, access: "person",
+      handler: async ({ response, params, ctx }) => (await store.removeHistory(decodeId(params[0]), me(ctx)))
+        ? sendJson(response, 200, { success: true }) : sendJson(response, 404, { error: "Journal entry not found." }),
+    },
+    {
+      method: "GET", path: "/api/inventory", access: "person",
+      handler: ({ response, url, ctx }) => sendJson(response, 200, {
+        inventory: store.listInventory({
+          userId: me(ctx),
+          search: url.searchParams.get("search") || "",
+          location: url.searchParams.get("location") || "",
+          low: url.searchParams.get("low") === "true",
+        }),
+      }),
+    },
+    {
+      method: "POST", path: "/api/inventory", access: "person",
+      handler: async ({ request, response, ctx }) => sendJson(response, 201, await store.addInventory(await readJson(request), me(ctx))),
+    },
+    {
+      method: "GET", path: /^\/api\/inventory\/([^/]+)$/, access: "person",
+      handler: ({ response, params, ctx }) => {
+        const item = store.getInventory(decodeId(params[0]), me(ctx));
+        return item ? sendJson(response, 200, { item }) : sendJson(response, 404, { error: "Kitchen Stock item not found." });
+      },
+    },
+    {
+      method: "PUT", path: /^\/api\/inventory\/([^/]+)$/, access: "person",
+      handler: async ({ request, response, params, ctx }) => {
+        const item = await store.updateInventory(decodeId(params[0]), await readJson(request), me(ctx));
+        return item ? sendJson(response, 200, { item }) : sendJson(response, 404, { error: "Kitchen Stock item not found." });
+      },
+    },
+    {
+      method: "DELETE", path: /^\/api\/inventory\/([^/]+)$/, access: "person",
+      handler: async ({ response, params, ctx }) => (await store.removeInventory(decodeId(params[0]), me(ctx)))
+        ? sendJson(response, 200, { success: true }) : sendJson(response, 404, { error: "Kitchen Stock item not found." }),
+    },
+    {
+      method: "POST", path: /^\/api\/inventory\/([^/]+)\/adjust$/, access: "person",
+      handler: async ({ request, response, params, ctx }) => {
+        const body = await readJson(request);
+        const item = await store.adjustInventory(decodeId(params[0]), body.delta, me(ctx));
+        return item ? sendJson(response, 200, { item }) : sendJson(response, 404, { error: "Kitchen Stock item not found." });
+      },
+    },
+    {
+      method: "GET", path: /^\/api\/products\/([^/]+)$/, access: "person",
+      handler: async ({ response, params }) => sendJson(response, 200, await lookupProduct(decodeId(params[0]))),
+    },
+    {
+      method: "GET", path: "/api/backup", access: "admin",
+      handler: ({ response }) => sendJson(response, 200, { ...store.backup(), people: users.list() }, {
+        "content-disposition": `attachment; filename="recipe-box-backup-${new Date().toISOString().slice(0, 10)}.json"`,
+      }),
+    },
+    { method: "GET", path: "/api/users", access: "admin", handler: ({ response }) => sendJson(response, 200, { users: users.list() }) },
+    {
+      method: "POST", path: "/api/users", access: "admin",
+      handler: async ({ request, response }) => sendJson(response, 201, { user: await users.create(await readJson(request, 16_000)) }),
+    },
+    {
+      method: "PUT", path: /^\/api\/users\/([^/]+)$/, access: "admin",
+      handler: async ({ request, response, params, ctx }) => {
+        const user = await users.update(decodeId(params[0]), await readJson(request, 16_000), { actorId: me(ctx) });
+        return user ? sendJson(response, 200, { user }) : sendJson(response, 404, { error: "Person not found." });
+      },
+    },
+    {
+      method: "DELETE", path: /^\/api\/users\/([^/]+)$/, access: "admin",
+      handler: async ({ response, params, ctx }) => {
+        const id = decodeId(params[0]);
+        if (!(await users.remove(id, { actorId: me(ctx) }))) return sendJson(response, 404, { error: "Person not found." });
+        await store.removePersonData(id);
+        return sendJson(response, 200, { success: true });
+      },
+    },
+    {
+      method: "GET", path: "/mcp", access: "home",
+      handler: ({ response }) => sendJson(response, 405, { error: "This MCP server uses Streamable HTTP POST requests." }, { allow: "POST" }),
+    },
+    {
+      method: "POST", path: "/mcp", access: "home",
+      handler: async ({ request, response }) => {
+        const result = await handleMcpMessage(store, await readJson(request), { userId: users.owner().id });
+        if (result.body === null) {
+          response.writeHead(result.status, { "cache-control": "no-store" });
+          return response.end();
+        }
+        return sendJson(response, result.status, result.body, { "mcp-protocol-version": "2025-06-18" });
+      },
+    },
+  ];
+}
+
+function matchRoute(routes, method, pathname) {
+  const allowed = [];
+  for (const route of routes) {
+    const params = typeof route.path === "string"
+      ? (route.path === pathname ? [] : null)
+      : route.path.exec(pathname)?.slice(1) || null;
+    if (!params) continue;
+    if (route.method === method) return { route, params };
+    allowed.push(route.method);
+  }
+  return allowed.length ? { allowed } : null;
+}
+
 export async function createApp(options = {}) {
   const dataFile = options.dataFile || process.env.DATA_FILE || defaultDataFile;
   const store = options.store || await new RecipeStore({ dataFile, seedFile }).init();
+  const users = options.users || await new UserStore({ dir: path.dirname(dataFile) }).init();
+  await store.assignUnowned(users.owner().id);
+  const routes = buildRoutes({ store, users });
 
-  const server = createServer(async (request, response) => {
+  // A session cookie that no longer works (signed out elsewhere, turned off, expired) is not
+  // quietly replaced by the Owner on the home network: the page gets a 401, learns the
+  // session ended and asks again, so one person's screen never fills with another's data.
+  const authenticate = (request, zone) => {
+    const address = clientAddress(request, zone);
+    const token = parseCookies(request.headers.cookie)[SESSION_COOKIE] || null;
+    const resolved = users.resolve(token);
+    if (resolved) return { zone, address, token, user: resolved.user, signedIn: true, stale: false };
+    const stale = Boolean(token);
+    return { zone, address, token, user: zone === "home" && !stale ? users.owner() : null, signedIn: false, stale };
+  };
+
+  const authorize = (access, ctx) => {
+    if (access === "open") return;
+    if (access === "home") {
+      if (ctx.zone !== "home") throw httpError(404, "Not found.");
+      return;
+    }
+    if (!ctx.user) throw httpError(401, "Sign in to continue.");
+    if ((ROLE_RANK[ctx.user.role] || 0) < ACCESS_RANK[access]) throw httpError(403, "Your account cannot do that.");
+  };
+
+  const handle = async (request, response, listenerZone) => {
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("referrer-policy", "no-referrer");
     response.setHeader("x-frame-options", "DENY");
     response.setHeader("permissions-policy", "camera=(self), microphone=(), geolocation=()");
     response.setHeader("content-security-policy", "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'");
 
-    const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
-    const { pathname } = url;
-
     try {
-      if (pathname === "/api/health") {
-        return sendJson(response, 200, {
-          status: "ok",
-          recipes: store.list().length,
-          history: store.listHistory().length,
-          inventory: store.listInventory().length,
-          version: APP_VERSION,
-        });
+      const url = new URL(request.url || "/", "http://recipe-box.invalid");
+      const { pathname } = url;
+      if (pathname.startsWith("/api/") || pathname === "/mcp") {
+        const match = matchRoute(routes, request.method, pathname);
+        if (!match) return sendJson(response, 404, { error: "Not found." });
+        if (match.allowed) return sendJson(response, 405, { error: "Method not allowed." }, { allow: [...new Set(match.allowed)].join(", ") });
+        if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) assertSameOrigin(request);
+        const ctx = authenticate(request, requestZone(request, listenerZone));
+        authorize(match.route.access, ctx);
+        return await match.route.handler({ request, response, url, params: match.params, ctx });
       }
-
-      if (pathname === "/api/recipes" && request.method === "GET") {
-        return sendJson(response, 200, {
-          recipes: store.list({
-            search: url.searchParams.get("search") || "",
-            category: url.searchParams.get("category") || "",
-            tag: url.searchParams.get("tag") || "",
-          }),
-        });
-      }
-
-      if (pathname === "/api/recipes" && request.method === "POST") {
-        const recipe = await store.add(await readJson(request));
-        return sendJson(response, 201, { recipe });
-      }
-
-      if (pathname === "/api/recipes/import" && request.method === "GET") {
-        return sendJson(response, 200, await importRecipeFromUrl(url.searchParams.get("url")));
-      }
-
-      const recipeMatch = pathname.match(/^\/api\/recipes\/([^/]+)$/);
-      if (recipeMatch && request.method === "GET") {
-        const recipe = store.get(decodeURIComponent(recipeMatch[1]));
-        return recipe ? sendJson(response, 200, { recipe }) : sendError(response, 404, "Recipe not found.");
-      }
-
-      if (recipeMatch && request.method === "PUT") {
-        const recipe = await store.update(decodeURIComponent(recipeMatch[1]), await readJson(request));
-        return recipe ? sendJson(response, 200, { recipe }) : sendError(response, 404, "Recipe not found.");
-      }
-
-      if (recipeMatch && request.method === "DELETE") {
-        const removed = await store.remove(decodeURIComponent(recipeMatch[1]));
-        return removed ? sendJson(response, 200, { success: true }) : sendError(response, 404, "Recipe not found.");
-      }
-
-      if (pathname === "/api/history" && request.method === "GET") {
-        return sendJson(response, 200, {
-          history: store.listHistory({
-            recipeId: url.searchParams.get("recipeId") || "",
-            limit: url.searchParams.get("limit") || 200,
-          }),
-        });
-      }
-
-      if (pathname === "/api/history" && request.method === "POST") {
-        return sendJson(response, 201, { entry: await store.logMade(await readJson(request)) });
-      }
-
-      const historyMatch = pathname.match(/^\/api\/history\/([^/]+)$/);
-      if (historyMatch && request.method === "DELETE") {
-        const removed = await store.removeHistory(decodeURIComponent(historyMatch[1]));
-        return removed ? sendJson(response, 200, { success: true }) : sendError(response, 404, "History entry not found.");
-      }
-
-      if (pathname === "/api/inventory" && request.method === "GET") {
-        return sendJson(response, 200, {
-          inventory: store.listInventory({
-            search: url.searchParams.get("search") || "",
-            location: url.searchParams.get("location") || "",
-            low: url.searchParams.get("low") === "true",
-          }),
-        });
-      }
-
-      if (pathname === "/api/inventory" && request.method === "POST") {
-        return sendJson(response, 201, await store.addInventory(await readJson(request)));
-      }
-
-      const inventoryMatch = pathname.match(/^\/api\/inventory\/([^/]+)$/);
-      if (inventoryMatch && request.method === "GET") {
-        const item = store.getInventory(decodeURIComponent(inventoryMatch[1]));
-        return item ? sendJson(response, 200, { item }) : sendError(response, 404, "Kitchen Stock item not found.");
-      }
-
-      if (inventoryMatch && request.method === "PUT") {
-        const item = await store.updateInventory(decodeURIComponent(inventoryMatch[1]), await readJson(request));
-        return item ? sendJson(response, 200, { item }) : sendError(response, 404, "Kitchen Stock item not found.");
-      }
-
-      if (inventoryMatch && request.method === "DELETE") {
-        const removed = await store.removeInventory(decodeURIComponent(inventoryMatch[1]));
-        return removed ? sendJson(response, 200, { success: true }) : sendError(response, 404, "Kitchen Stock item not found.");
-      }
-
-      const adjustMatch = pathname.match(/^\/api\/inventory\/([^/]+)\/adjust$/);
-      if (adjustMatch && request.method === "POST") {
-        const body = await readJson(request);
-        const item = await store.adjustInventory(decodeURIComponent(adjustMatch[1]), body.delta);
-        return item ? sendJson(response, 200, { item }) : sendError(response, 404, "Kitchen Stock item not found.");
-      }
-
-      const productMatch = pathname.match(/^\/api\/products\/([^/]+)$/);
-      if (productMatch && request.method === "GET") {
-        return sendJson(response, 200, await lookupProduct(decodeURIComponent(productMatch[1])));
-      }
-
-      if (pathname === "/api/backup" && request.method === "GET") {
-        return sendJson(response, 200, store.backup(), {
-          "content-disposition": `attachment; filename="recipe-box-backup-${new Date().toISOString().slice(0, 10)}.json"`,
-        });
-      }
-
-      if (pathname === "/mcp" && request.method === "GET") {
-        response.setHeader("allow", "POST");
-        return sendError(response, 405, "This MCP server uses Streamable HTTP POST requests.");
-      }
-
-      if (pathname === "/mcp" && request.method === "POST") {
-        const result = await handleMcpMessage(store, await readJson(request));
-        if (result.body === null) {
-          response.writeHead(result.status);
-          return response.end();
-        }
-        return sendJson(response, result.status, result.body, { "mcp-protocol-version": "2025-06-18" });
-      }
-
       if ((request.method === "GET" || request.method === "HEAD") && await serveStatic(request, response, pathname)) return;
-      sendError(response, 404, "Not found.");
+      sendJson(response, 404, { error: "Not found." });
     } catch (error) {
       const status = Number(error.status) || 500;
       if (status >= 500) console.error(error);
-      sendError(response, status, status >= 500 ? "Unexpected server error." : error.message);
+      const headers = error.retryAfterMinutes ? { "retry-after": String(error.retryAfterMinutes * 60) } : {};
+      if (!response.headersSent) sendJson(response, status, { error: status >= 500 ? "Unexpected server error." : error.message }, headers);
+      else response.end();
     }
-  });
+  };
 
-  return { server, store };
+  const server = createServer((request, response) => handle(request, response, "home"));
+  const publicServer = createServer((request, response) => handle(request, response, "public"));
+  return { server, publicServer, store, users, routes };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const port = Number(process.env.PORT) || 8080;
+  const publicPort = Number(process.env.PUBLIC_PORT) || 0;
   const host = process.env.HOST || "0.0.0.0";
-  const { server } = await createApp();
-  server.listen(port, host, () => {
-    console.log(`Recipe Box listening on http://${host}:${port}`);
-  });
+  const { server, publicServer } = await createApp();
+  server.listen(port, host, () => console.log(`Recipe Box (home network) listening on http://${host}:${port}`));
+  if (publicPort) publicServer.listen(publicPort, host, () => console.log(`Recipe Box (sign-in required) listening on http://${host}:${publicPort}`));
 }
