@@ -146,3 +146,55 @@ test("rejects bad recipe import URLs", async () => {
   const scheme = await fetch(`${baseUrl}/api/recipes/import?url=${encodeURIComponent("ftp://example.com/x")}`);
   assert.equal(scheme.status, 400);
 });
+
+test("a failed import or product lookup answers its own reason, not a generic error", async () => {
+  const origin = createServer((request, response) => {
+    response.statusCode = 404;
+    response.end("gone");
+  });
+  await new Promise((resolve) => origin.listen(0, "127.0.0.1", resolve));
+  try {
+    const originUrl = `http://127.0.0.1:${origin.address().port}/missing`;
+    const failed = await fetch(`${baseUrl}/api/recipes/import?url=${encodeURIComponent(originUrl)}`);
+    assert.equal(failed.status, 502);
+    assert.deepEqual(await failed.json(), { error: "That page responded with 404." });
+  } finally {
+    await new Promise((resolve) => origin.close(resolve));
+  }
+
+  // Open Food Facts is replaced for this test only; every other request still goes out.
+  const realFetch = globalThis.fetch;
+  let lookupFailure = null;
+  globalThis.fetch = (url, options) => (String(url).startsWith("https://world.openfoodfacts.org/")
+    ? Promise.reject(lookupFailure)
+    : realFetch(url, options));
+  try {
+    lookupFailure = Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
+    const slow = await realFetch(`${baseUrl}/api/products/3017620422003`);
+    assert.equal(slow.status, 504);
+    assert.deepEqual(await slow.json(), { error: "Product lookup timed out." });
+    lookupFailure = new TypeError("fetch failed");
+    const unreachable = await realFetch(`${baseUrl}/api/products/3017620422003`);
+    assert.equal(unreachable.status, 502);
+    assert.deepEqual(await unreachable.json(), { error: "Product lookup is unavailable right now." });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("an unexpected failure still answers a generic message", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "recipe-box-test-"));
+  const app = await createApp({ dataFile: path.join(dir, "recipes.json") });
+  app.store.getProfile = () => {
+    throw new Error("a detail about the disk that must stay on the server");
+  };
+  await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+  try {
+    const broken = await fetch(`http://127.0.0.1:${app.server.address().port}/api/profile`);
+    assert.equal(broken.status, 500);
+    assert.deepEqual(await broken.json(), { error: "Unexpected server error." });
+  } finally {
+    await new Promise((resolve) => app.server.close(resolve));
+    await rm(dir, { recursive: true, force: true });
+  }
+});

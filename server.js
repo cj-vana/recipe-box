@@ -162,7 +162,9 @@ async function lookupProduct(barcode) {
       source: "Open Food Facts",
     };
   } catch (error) {
-    if (error.name === "AbortError") throw httpError(504, "Product lookup timed out. You can enter the name manually.");
+    // The page adds "Enter the item name manually." after these.
+    if (error.name === "AbortError") throw httpError(504, "Product lookup timed out.");
+    if (!error.status) throw httpError(502, "Product lookup is unavailable right now.");
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -503,7 +505,10 @@ export async function createApp(options = {}) {
       const status = Number(error.status) || 500;
       if (status >= 500) console.error(error);
       const headers = error.retryAfterMinutes ? { "retry-after": String(error.retryAfterMinutes * 60) } : {};
-      if (!response.headersSent) sendJson(response, status, { error: status >= 500 ? "Unexpected server error." : error.message }, headers);
+      // A reason written for people (an error with a status, such as a failed import) is passed
+      // on; anything unexpected stays generic so server details never reach the page.
+      const message = error.status ? error.message : "Unexpected server error.";
+      if (!response.headersSent) sendJson(response, status, { error: message }, headers);
       else response.end();
     }
   };
