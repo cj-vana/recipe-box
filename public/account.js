@@ -240,10 +240,11 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
       status.textContent = personStatus(person);
       copy.append(name, meta, status);
       row.append(avatar, copy);
-      if (person.id === me.id) {
+      if (person.id === me.id || (person.owner && !me.owner)) {
+        // Only the owner changes the owner's account (in Your profile).
         const you = document.createElement("span");
         you.className = "person-you";
-        you.textContent = "You";
+        you.textContent = person.id === me.id ? "You" : "Owner";
         row.append(you);
       } else {
         const edit = document.createElement("button");

@@ -87,11 +87,33 @@ function requestZone(request, listenerZone) {
   return CLOUDFLARE_HEADERS.some((name) => request.headers[name]) ? "public" : "home";
 }
 
-// The visitor's address for sign-in throttling. The public port is only published on
-// loopback for cloudflared, so its forwarded address can be trusted there.
+// Names a browser can only reach on the home network or tailnet. A web page cannot point a
+// name like these at this server, so a page elsewhere cannot re-point ("rebind") its own
+// domain here and act as the Owner. Other names go in TRUSTED_HOSTS (comma separated).
+const HOME_HOST_SUFFIXES = [".local", ".lan", ".home.arpa", ".internal", ".localhost", ".ts.net"];
+
+function hostName(header) {
+  const value = String(header || "").trim().toLowerCase();
+  const host = value.startsWith("[") ? value.slice(1, value.indexOf("]")) : value.split(":")[0];
+  return host.replace(/\.$/, "");
+}
+
+export function isHomeHost(header, trustedHosts = []) {
+  const host = hostName(header);
+  if (!host) return false;
+  if (net.isIP(host) || host === "localhost" || !host.includes(".")) return true;
+  if (HOME_HOST_SUFFIXES.some((suffix) => host.endsWith(suffix))) return true;
+  return trustedHosts.includes(host);
+}
+
+// The visitor's address for sign-in throttling. The public port is published only on
+// loopback for cloudflared, which sets cf-connecting-ip itself. Behind another proxy, the
+// last X-Forwarded-For entry is the one that proxy added; earlier entries are the client's.
 function clientAddress(request, zone) {
   if (zone === "public") {
-    const forwarded = String(request.headers["cf-connecting-ip"] || String(request.headers["x-forwarded-for"] || "").split(",")[0]).trim();
+    const cloudflare = String(request.headers["cf-connecting-ip"] || "").trim();
+    if (net.isIP(cloudflare)) return cloudflare;
+    const forwarded = String(request.headers["x-forwarded-for"] || "").split(",").map((part) => part.trim()).filter(Boolean).pop() || "";
     if (net.isIP(forwarded)) return forwarded;
   }
   return request.socket.remoteAddress || "unknown";
@@ -424,6 +446,8 @@ function matchRoute(routes, method, pathname) {
 
 export async function createApp(options = {}) {
   const dataFile = options.dataFile || process.env.DATA_FILE || defaultDataFile;
+  const trustedHosts = (options.trustedHosts ?? String(process.env.TRUSTED_HOSTS || "").split(","))
+    .map((host) => hostName(host)).filter(Boolean);
   const store = options.store || await new RecipeStore({ dataFile, seedFile }).init();
   const users = options.users || await new UserStore({ dir: path.dirname(dataFile) }).init();
   await store.assignUnowned(users.owner().id);
@@ -461,6 +485,9 @@ export async function createApp(options = {}) {
     try {
       const url = new URL(request.url || "/", "http://recipe-box.invalid");
       const { pathname } = url;
+      if (listenerZone === "home" && !isHomeHost(request.headers.host, trustedHosts)) {
+        return sendJson(response, 421, { error: "This address is not on Recipe Box's home network list. Use the sign-in address, or add this name to TRUSTED_HOSTS." });
+      }
       if (pathname.startsWith("/api/") || pathname === "/mcp") {
         const match = matchRoute(routes, request.method, pathname);
         if (!match) return sendJson(response, 404, { error: "Not found." });

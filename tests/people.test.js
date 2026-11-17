@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
+import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { after, before, test } from "node:test";
@@ -112,6 +112,59 @@ test("a session that ended on the home network gets a 401, then the Owner after 
   assert.equal(fresh.json.user.owner, true);
   assert.match(fresh.headers.get("set-cookie"), /Max-Age=0/);
   assert.equal((await call(home, "/api/history")).status, 200);
+});
+
+// fetch() will not send a custom Host header, so these use node:http directly.
+function withHost(base, pathname, host, { method = "GET", body } = {}) {
+  const target = new URL(pathname, base);
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({ host: target.hostname, port: target.port, path: target.pathname, method, headers: { host, ...(body ? { "content-type": "application/json" } : {}) } }, (response) => {
+      let text = "";
+      response.on("data", (chunk) => { text += chunk; });
+      response.on("end", () => resolve({ status: response.statusCode, text }));
+    });
+    request.on("error", reject);
+    request.end(body ? JSON.stringify(body) : undefined);
+  });
+}
+
+test("the home port only answers addresses on the home network, so a rebound domain cannot act as the Owner", async () => {
+  for (const host of ["evil.example.com", "evil.example.com:13002", "recipes.example.org"]) {
+    const page = await withHost(home, "/", host);
+    assert.equal(page.status, 421, host);
+    const create = await withHost(home, "/api/users", host, { method: "POST", body: { displayName: "Intruder", username: "intruder", role: "admin", password: "intruder-password-1" } });
+    assert.equal(create.status, 421, host);
+  }
+  assert.equal(app.users.findByUsername("intruder"), null);
+  for (const host of ["192.168.1.20:13002", "127.0.0.1:13002", "localhost", "[::1]:13002", "kitchen-pc", "kitchen.local", "server.lan", "box.home.arpa", "recipes.example-tailnet.ts.net:13002"]) {
+    assert.equal((await withHost(home, "/api/session", host)).status, 200, host);
+  }
+});
+
+test("the outside port takes the visitor address from the proxy, and one username cannot be guessed from many addresses", async () => {
+  app.users.limiter.failures.clear();
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = await signIn("erin", `wrong-${attempt}-password`, { "cf-connecting-ip": `203.0.113.${attempt + 1}` });
+    assert.equal(result.status, 401, `attempt ${attempt}`);
+  }
+  const fromNewAddress = await signIn("erin", passwords.erin, { "cf-connecting-ip": "203.0.113.200" });
+  assert.equal(fromNewAddress.status, 429, "twenty failures for one username from any addresses pause that username");
+  app.users.limiter.failures.clear();
+  assert.equal((await signIn("erin", passwords.erin, { "cf-connecting-ip": "203.0.113.200" })).status, 200);
+});
+
+test("only the Owner can change the Owner's account", async () => {
+  const owner = app.users.owner();
+  const admin = await call(home, "/api/users", { method: "POST", body: { displayName: "Second Admin", username: "admin2", role: "admin", password: "basil-onion-admin-77" } });
+  assert.equal(admin.status, 201);
+  const { cookie } = await signIn("admin2", "basil-onion-admin-77");
+  for (const body of [{ password: "takeover-password-1" }, { username: "taken-over" }, { displayName: "Not the owner" }]) {
+    const result = await call(outside, `/api/users/${owner.id}`, { method: "PUT", cookie, body });
+    assert.equal(result.status, 403, JSON.stringify(body));
+  }
+  assert.equal(app.users.owner().username, owner.username);
+  assert.equal((await call(outside, "/api/users", { cookie })).status, 200, "the second admin still manages other people");
+  await call(home, `/api/users/${admin.json.user.id}`, { method: "DELETE" });
 });
 
 test("the passwordless Owner cannot sign in from outside", async () => {

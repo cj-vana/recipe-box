@@ -1,6 +1,27 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
 import { test } from "node:test";
-import { isPrivateAddress } from "../lib/safe-fetch.js";
+import { fetchPageText, isPrivateAddress } from "../lib/safe-fetch.js";
+
+test("a page that keeps sending slowly still hits the total deadline", { timeout: 8000 }, async () => {
+  const slow = createServer((request, response) => {
+    response.writeHead(200, { "content-type": "text/html" });
+    const drip = setInterval(() => response.write(" "), 100);
+    response.on("close", () => clearInterval(drip));
+  });
+  await new Promise((resolve) => slow.listen(0, "127.0.0.1", resolve));
+  const started = Date.now();
+  try {
+    await assert.rejects(
+      fetchPageText(`http://127.0.0.1:${slow.address().port}/`, { timeoutMs: 500, totalMs: 1200 }),
+      (error) => error.status === 504,
+    );
+    assert.ok(Date.now() - started < 4000, `took ${Date.now() - started} ms`);
+  } finally {
+    slow.closeAllConnections?.();
+    await new Promise((resolve) => slow.close(resolve));
+  }
+});
 
 test("treats loopback, LAN, link-local, Tailscale and reserved addresses as private", () => {
   for (const address of [

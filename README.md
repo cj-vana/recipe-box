@@ -42,6 +42,7 @@ Open <http://localhost:8080>. Environment variables:
 | `PUBLIC_PORT` | unset | Sign-in port: every API call needs an account. Unset means off |
 | `HOST` | `0.0.0.0` | Address both ports listen on |
 | `DATA_FILE` | `data/runtime/recipes.json` | Recipes file; the other data files sit beside it |
+| `TRUSTED_HOSTS` | unset | Extra host names the home port answers to, comma separated |
 
 Run the tests with:
 
@@ -65,6 +66,12 @@ As a safety net, requests that carry Cloudflare headers (`cf-ray`,
 `cf-connecting-ip`, `cdn-loop`) get the sign-in rules even on the home port, so a
 tunnel route pointed at the wrong port still asks for a password.
 
+The home port answers only to host names a web page cannot point at your server: IP
+addresses, `localhost`, single-word names, and names ending in `.local`, `.lan`,
+`.home.arpa`, `.internal`, `.localhost` or `.ts.net`. That stops a site you visit from
+re-pointing ("DNS rebinding") its own domain at Recipe Box and acting as the Owner.
+Any other name gets `421`; add it to `TRUSTED_HOSTS` if you use one at home.
+
 Roles:
 
 | Role | Can |
@@ -84,8 +91,9 @@ To let people in from outside:
    visit; changing a password, turning a person off or deleting them signs them out
    everywhere.
 
-Passwords are stored as scrypt hashes. Sign-in slows down after five wrong tries for
-one username from one address (twenty per address) for fifteen minutes. Cookies are
+Passwords are stored as scrypt hashes. Sign-in pauses for up to fifteen minutes after
+five wrong tries for one username from one address, twenty from one address, or twenty
+for one username from any addresses. Only the Owner can change the Owner's account. Cookies are
 `HttpOnly`, `SameSite=Lax`, and `Secure` when the proxy reports HTTPS. Requests that
 change data must come from the app's own pages (checked with `Sec-Fetch-Site`) and
 send JSON.
