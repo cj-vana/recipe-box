@@ -1206,9 +1206,10 @@ function switchView(name, updateHash = true) {
   if (name === "planner") renderPlanner();
   if (name === "shopping") renderShopping();
   // A control in the view that was just hidden (the hero's "new this month" link) leaves focus
-  // on nothing; give it to the new view's heading instead.
+  // on nothing; give it to the new view's heading instead. Focus that was never on a control
+  // (a fresh load) stays where it is, so the page does not open with a ring round its heading.
   const focused = document.activeElement;
-  if (!focused || focused === document.body || !focused.offsetParent) {
+  if (focused && focused !== document.body && !focused.offsetParent) {
     const heading = document.querySelector(`[data-app-view="${name}"] h1`);
     if (heading) {
       heading.tabIndex = -1;
