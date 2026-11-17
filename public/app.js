@@ -1726,13 +1726,25 @@ function setupEvents() {
   elements.sortSelect.addEventListener("change", () => { state.sort = elements.sortSelect.value; renderRecipes(); });
   elements.suggestAgainButton.addEventListener("click", () => { state.suggestionOffset += 1; renderHero(); });
   // The browser leaves a control that is partly on screen where it is, even when the sticky nav covers
-  // most of it, so move anything that takes focus under the nav down into view.
+  // most of it, so move anything that Tab or Shift+Tab focuses under the nav down into view. Only for
+  // Tab: when the window comes back to the front, the browser hands focus back to whatever had it,
+  // often a heading far above, and that must not scroll the page there.
   const viewNav = document.querySelector(".view-nav");
+  let tabbedAt = -Infinity;
+  document.addEventListener("keydown", (event) => { if (event.key === "Tab") tabbedAt = event.timeStamp; }, true);
   document.addEventListener("focusin", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement) || target.closest("dialog, .view-nav, .site-header")) return;
+    if (event.timeStamp - tabbedAt > 500 || !(target instanceof HTMLElement) || target.closest("dialog, .view-nav, .site-header")) return;
     if (target.getBoundingClientRect().top < viewNav.getBoundingClientRect().bottom) target.scrollIntoView({ block: "nearest", behavior: "instant" });
   });
+  // A sheet keeps its scroll position while its dialog is closed, so a form left scrolled down to its
+  // buttons would open there next time. Start every sheet at its top when its dialog opens.
+  const sheetReset = new MutationObserver((records) => {
+    for (const { target } of records) {
+      if (target.open) target.querySelectorAll(".form-sheet, .settings-sheet").forEach((sheet) => { sheet.scrollTop = 0; });
+    }
+  });
+  document.querySelectorAll("dialog").forEach((dialog) => sheetReset.observe(dialog, { attributes: true, attributeFilter: ["open"] }));
   document.addEventListener("keydown", (event) => {
     if (event.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { event.preventDefault(); switchView("recipes"); elements.searchInput.focus(); }
     if (elements.recipeDialog.classList.contains("cook-mode") && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
