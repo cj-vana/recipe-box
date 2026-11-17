@@ -1849,8 +1849,12 @@ function setupEvents() {
     }
     renderTimers();
   });
-  const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  if (isiOS && !window.matchMedia("(display-mode: standalone)").matches) elements.installHelp.textContent = "In Safari, tap Share, then Add to Home Screen.";
+  // The advice depends on where the page is open. An iPad reports itself as a Mac with a touch screen,
+  // a secure page (HTTPS or localhost) can use the browser's own install, and plain http cannot install.
+  const isiOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  if (window.matchMedia("(display-mode: standalone)").matches) elements.installHelp.textContent = "Recipe Box is installed on this device.";
+  else if (isiOS) elements.installHelp.textContent = "In Safari, tap Share, then Add to Home Screen.";
+  else if (window.isSecureContext) elements.installHelp.textContent = "Use your browser's Install or Add to Dock option to keep Recipe Box as an app.";
 }
 
 // Re-renders a list and puts keyboard focus back on the matching control, so pressing a
