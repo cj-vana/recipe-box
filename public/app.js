@@ -576,7 +576,7 @@ function openRecipe(recipe, updateHash = true) {
       chip.type = "button";
       chip.className = "step-timer-chip";
       chip.textContent = `${GLYPH.timer} ${timer.label}`;
-      chip.setAttribute("aria-label", `Start a ${timer.label} timer for step ${index + 1}`);
+      chip.setAttribute("aria-label", `Start the ${timer.label} timer for step ${index + 1}`);
       chip.addEventListener("click", () => startTimer(`${recipe.title}, step ${index + 1}`, timer.minutes));
       item.append(chip);
     }
@@ -631,7 +631,7 @@ function updateCookStepUI() {
   elements.cookStepTimer.hidden = !timer;
   if (timer) {
     elements.cookStepTimer.textContent = `${GLYPH.timer} ${timer.label}`;
-    elements.cookStepTimer.setAttribute("aria-label", `Start a ${timer.label} timer for step ${state.cookStep + 1}`);
+    elements.cookStepTimer.setAttribute("aria-label", `Start the ${timer.label} timer for step ${state.cookStep + 1}`);
     elements.cookStepTimer.onclick = () => startTimer(`${recipe.title}, step ${state.cookStep + 1}`, timer.minutes);
   }
   elements.cookPrevButton.disabled = state.cookStep === 0;
