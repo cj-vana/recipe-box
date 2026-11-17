@@ -198,7 +198,9 @@ h1, h2 { text-wrap: balance; }
 }
 
 .hero-count { margin: 0 0 18px; color: var(--muted); font-size: 15px; font-weight: 700; }
-.hero-count .text-link { margin-left: 10px; font-size: 15px; }
+.hero-count .text-link { position: relative; margin-left: 10px; font-size: 15px; }
+/* A taller tap area than the 15 px line, without moving the line or the focus ring. */
+.hero-count .text-link::after { position: absolute; inset: -11px -6px; content: ""; }
 
 .hero h1, .section-heading h2, dialog h2 {
   margin: 0;
