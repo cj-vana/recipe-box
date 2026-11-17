@@ -245,7 +245,7 @@ function buildRoutes({ store, users }) {
       method: "POST", path: "/api/session", access: "open",
       handler: async ({ request, response, ctx }) => {
         const body = await readJson(request, 16_000);
-        const { token, user } = await users.signIn(body.username, body.password, { address: ctx.address });
+        const { token, user } = await users.signIn(body.username, body.password, { address: ctx.address, zone: ctx.zone });
         if (ctx.token) await users.signOut(ctx.token);
         response.setHeader("set-cookie", sessionCookie(request, token, SESSION_DAYS * 86_400));
         sendJson(response, 200, { ...sessionPayload(ctx, null, true), user });

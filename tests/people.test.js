@@ -149,6 +149,9 @@ test("the outside port takes the visitor address from the proxy, and one usernam
   }
   const fromNewAddress = await signIn("erin", passwords.erin, { "cf-connecting-ip": "203.0.113.200" });
   assert.equal(fromNewAddress.status, 429, "twenty failures for one username from any addresses pause that username");
+  app.users.limiter.trusted.clear();
+  const atHome = await call(home, "/api/session", { method: "POST", body: { username: "erin", password: passwords.erin } });
+  assert.equal(atHome.status, 200, "the real person can still sign in on the home network");
   app.users.limiter.failures.clear();
   assert.equal((await signIn("erin", passwords.erin, { "cf-connecting-ip": "203.0.113.200" })).status, 200);
 });
