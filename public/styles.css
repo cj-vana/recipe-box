@@ -661,6 +661,8 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
   .recipe-dialog.cook-mode .recipe-content { --pad-x: 20px; }
   .cook-step-bar { margin-bottom: calc(-40px - env(safe-area-inset-bottom)); gap: 8px; }
   .cook-nav-button { padding: 10px 14px; font-size: 13px; }
+  /* Between Back and Next the chip has about 129 px; '15 to 18 min' needs 121 px with this padding. */
+  .cook-step-bar .step-timer-chip { padding-right: 10px; padding-left: 10px; white-space: nowrap; }
   .detail-actions { position: sticky; z-index: 3; top: 0; margin-right: -20px; margin-left: -20px; padding: 10px 20px; background: rgba(242,234,216,.96); backdrop-filter: blur(10px); }
   .detail-actions .button { flex: 1; padding-right: 8px; padding-left: 8px; font-size: 12px; }
   .recipe-dialog.cook-mode .detail-actions { position: static; margin: 0 0 24px; padding: 0; background: none; }
