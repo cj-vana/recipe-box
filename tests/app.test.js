@@ -30,7 +30,7 @@ test("serves the Recipe Box PWA shell and health endpoint", async () => {
   const manifest = await fetch(`${baseUrl}/manifest.webmanifest`);
   assert.equal(manifest.headers.get("content-type"), "application/manifest+json; charset=utf-8");
   const health = await fetch(`${baseUrl}/api/health`).then((response) => response.json());
-  assert.deepEqual({ status: health.status, recipes: health.recipes, version: health.version }, { status: "ok", recipes: 13, version: "3.0.1" });
+  assert.deepEqual({ status: health.status, recipes: health.recipes, version: health.version }, { status: "ok", recipes: 13, version: "3.0.2" });
 });
 
 test("lists normal recipes with finished-dish images and filters them", async () => {

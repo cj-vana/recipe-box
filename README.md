@@ -44,6 +44,7 @@ Open <http://localhost:8080>. Environment variables:
 | `HOST` | `0.0.0.0` | Address both ports listen on |
 | `DATA_FILE` | `data/runtime/recipes.json` | Recipes file; the other data files sit beside it |
 | `TRUSTED_HOSTS` | unset | Extra host names the home port answers to, comma separated |
+| `CLIENT_IP_HEADER` | `cf-connecting-ip` | Where the sign-in port reads a visitor's address: `cf-connecting-ip`, `x-forwarded-for` or `none` (see below) |
 
 Run the tests with:
 
@@ -62,6 +63,23 @@ Recipe Box listens on two ports that share one library:
 - **Sign-in port** (`PUBLIC_PORT`, published as `13012` on loopback): for outside
   access. The page loads, and everything else needs an account. Point your Cloudflare
   Tunnel or reverse proxy at this port, never at the home port.
+
+The sign-in port pauses an address after too many wrong passwords, so it needs each
+visitor's own address. Set `CLIENT_IP_HEADER` to match what sits in front of it:
+
+- unset or `cf-connecting-ip`: Cloudflare Tunnel, which writes `CF-Connecting-IP` on
+  every request.
+- `x-forwarded-for`: another reverse proxy, as long as it adds the address it saw as the
+  last `X-Forwarded-For` entry (check your proxy's settings).
+- `none`: nothing in front of the port. Behind a proxy this makes every visitor share
+  the proxy's address: guessing is still limited, but one visitor's wrong passwords
+  can pause sign-in for everyone.
+
+Do not keep the default behind any proxy other than Cloudflare. A proxy that passes
+headers through lets a visitor send their own `CF-Connecting-IP`, so each guess could
+claim a new address. Either header counts only when the connection comes from loopback
+or a private network, where the proxy runs; any other value of the setting stops the
+server at start.
 
 As a safety net, requests that carry Cloudflare headers (`cf-ray`,
 `cf-connecting-ip`, `cdn-loop`) get the sign-in rules even on the home port, so a

@@ -106,17 +106,45 @@ export function isHomeHost(header, trustedHosts = []) {
   return trustedHosts.includes(host);
 }
 
-// The visitor's address for sign-in throttling. The public port is published only on
-// loopback for cloudflared, which sets cf-connecting-ip itself. Behind another proxy, the
-// last X-Forwarded-For entry is the one that proxy added; earlier entries are the client's.
-function clientAddress(request, zone) {
-  if (zone === "public") {
-    const cloudflare = String(request.headers["cf-connecting-ip"] || "").trim();
-    if (net.isIP(cloudflare)) return cloudflare;
-    const forwarded = String(request.headers["x-forwarded-for"] || "").split(",").map((part) => part.trim()).filter(Boolean).pop() || "";
-    if (net.isIP(forwarded)) return forwarded;
+// The visitor's address for sign-in throttling. CLIENT_IP_HEADER names the one header that
+// the proxy in front of the sign-in port writes:
+// - cf-connecting-ip (the default): Cloudflare Tunnel, which sets it on every request;
+// - x-forwarded-for: another proxy that adds the address it saw as the last entry;
+// - none: nothing in front of the port, so the connection's own address is the visitor's.
+// A visitor can send either header too, so nothing else is read, and a header counts only when
+// the connection comes from loopback or a private network, where such a proxy runs. Anyone who
+// reaches the port directly is counted by their own address.
+export const CLIENT_IP_HEADERS = ["cf-connecting-ip", "x-forwarded-for", "none"];
+
+export function clientIpHeaderSetting(value) {
+  const setting = String(value ?? "").trim().toLowerCase() || CLIENT_IP_HEADERS[0];
+  if (!CLIENT_IP_HEADERS.includes(setting)) {
+    throw new Error(`CLIENT_IP_HEADER must be one of ${CLIENT_IP_HEADERS.join(", ")} (got ${JSON.stringify(String(value))}).`);
   }
-  return request.socket.remoteAddress || "unknown";
+  return setting;
+}
+
+const PROXY_NETWORKS = new net.BlockList();
+for (const [network, prefix] of [["127.0.0.0", 8], ["10.0.0.0", 8], ["172.16.0.0", 12], ["192.168.0.0", 16]]) {
+  PROXY_NETWORKS.addSubnet(network, prefix, "ipv4");
+}
+PROXY_NETWORKS.addAddress("::1", "ipv6");
+PROXY_NETWORKS.addSubnet("fc00::", 7, "ipv6");
+
+// An IPv4 connection to a server listening on "::" arrives as ::ffff:a.b.c.d, which BlockList
+// matches against the IPv4 ranges (checked on Node 22, 24 and 26).
+function fromProxyNetwork(address) {
+  const family = net.isIP(String(address || ""));
+  return family !== 0 && PROXY_NETWORKS.check(address, family === 6 ? "ipv6" : "ipv4");
+}
+
+export function clientAddress(request, zone, header = CLIENT_IP_HEADERS[0]) {
+  const connection = request.socket?.remoteAddress || "unknown";
+  if (zone !== "public" || header === "none" || !fromProxyNetwork(connection)) return connection;
+  const value = header === "x-forwarded-for"
+    ? String(request.headers["x-forwarded-for"] || "").split(",").map((part) => part.trim()).filter(Boolean).pop() || ""
+    : String(request.headers["cf-connecting-ip"] || "").trim();
+  return net.isIP(value) ? value : connection;
 }
 
 function isHttps(request) {
@@ -447,6 +475,7 @@ function matchRoute(routes, method, pathname) {
 }
 
 export async function createApp(options = {}) {
+  const clientIpHeader = clientIpHeaderSetting(options.clientIpHeader ?? process.env.CLIENT_IP_HEADER);
   const dataFile = options.dataFile || process.env.DATA_FILE || defaultDataFile;
   const trustedHosts = (options.trustedHosts ?? String(process.env.TRUSTED_HOSTS || "").split(","))
     .map((host) => hostName(host)).filter(Boolean);
@@ -459,7 +488,7 @@ export async function createApp(options = {}) {
   // quietly replaced by the Owner on the home network: the page gets a 401, learns the
   // session ended and asks again, so one person's screen never fills with another's data.
   const authenticate = (request, zone) => {
-    const address = clientAddress(request, zone);
+    const address = clientAddress(request, zone, clientIpHeader);
     const token = parseCookies(request.headers.cookie)[SESSION_COOKIE] || null;
     const resolved = users.resolve(token);
     if (resolved) return { zone, address, token, user: resolved.user, signedIn: true, stale: false };
