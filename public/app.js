@@ -1,8 +1,9 @@
-import { friendlyNumber, parseLeadingNumber, scaleAmount } from "./amounts.js";
+import { scaleAmount } from "./amounts.js";
 import { api, ApiError, isOfflineError, onUnauthorized } from "./api.js";
 import { initials, setupAccount } from "./account.js";
 import { MEALS, mealLabel, mealsOf, mergePlans, normalizePlanner, removeMeal, setMeal, suggestedMeal } from "./meal-plan.js";
 import { isAddedThisMonth, monthKeyOf, monthLabel, newRecipes } from "./new-this-month.js";
+import { parseIngredientLine, parsePastedRecipe } from "./paste.js";
 
 const GLYPH = {
   star: String.fromCodePoint(0x2605),
@@ -106,7 +107,7 @@ const elements = {
   recipeNotes: $("#recipeNotes"), searchInput: $("#searchInput"),
   settingsDialog: $("#settingsDialog"), sortSelect: $("#sortSelect"),
   stepList: $("#stepList"), toast: $("#toast"),
-  servingsDown: $("#servingsDown"), servingsUp: $("#servingsUp"), servingsValue: $("#servingsValue"),
+  servingsDown: $("#servingsDown"), servingsUp: $("#servingsUp"), servingsValue: $("#servingsValue"), servingsLimit: $("#servingsLimit"),
   logMadeButton: $("#logMadeButton"), madeDialog: $("#madeDialog"), madeForm: $("#madeForm"),
   madeDate: $("#madeDate"), madeRating: $("#madeRating"), madeError: $("#madeError"),
   madeRecipeTitle: $("#madeRecipeTitle"), ratingPicker: $("#ratingPicker"), deductStock: $("#deductStock"),
@@ -121,7 +122,7 @@ const elements = {
   stockForm: $("#stockForm"), stockDialogTitle: $("#stockDialogTitle"), stockError: $("#stockError"),
   deleteStockButton: $("#deleteStockButton"), lookupStatus: $("#lookupStatus"),
   lookupBarcodeButton: $("#lookupBarcodeButton"), scanFromFormButton: $("#scanFromFormButton"),
-  scannerDialog: $("#scannerDialog"), barcodeReader: $("#barcodeReader"), scannerError: $("#scannerError"),
+  scannerDialog: $("#scannerDialog"), barcodeReader: $("#barcodeReader"), scannerError: $("#scannerError"), scannerIntro: $("#scannerIntro"),
   manualBarcodeForm: $("#manualBarcodeForm"), manualBarcodeInput: $("#manualBarcodeInput"),
   plannerGrid: $("#plannerGrid"), weekTitle: $("#weekTitle"), previousWeekButton: $("#previousWeekButton"),
   nextWeekButton: $("#nextWeekButton"), thisWeekButton: $("#thisWeekButton"), planDialog: $("#planDialog"),
@@ -273,8 +274,20 @@ function recommendationScore(recipe) {
   return Math.min(days, 100) + stockMatchCount(recipe) * 16 + quick + daily - madeCount(recipe) * 2;
 }
 
+// Tonight's suggestion is a main meal: not a Breakfast recipe and not one tagged as a snack, side,
+// dessert, drink or sauce. A library with nothing else still gets a suggestion.
+const NOT_TONIGHT_TAGS = new Set(["snack", "snacks", "side", "sides", "side dish", "dessert", "desserts", "drink", "drinks",
+  "sauce", "sauces", "appetizer", "appetizers", "breakfast"]);
+
+function suitsTonight(recipe) {
+  if (String(recipe.category || "").trim().toLowerCase() === "breakfast") return false;
+  return !(recipe.tags || []).some((tag) => NOT_TONIGHT_TAGS.has(String(tag).trim().toLowerCase()));
+}
+
 function suggestedRecipes() {
-  return [...state.recipes].sort((a, b) => recommendationScore(b) - recommendationScore(a));
+  const ranked = [...state.recipes].sort((a, b) => recommendationScore(b) - recommendationScore(a));
+  const tonight = ranked.filter(suitsTonight);
+  return tonight.length ? tonight : ranked;
 }
 
 function filteredRecipes() {
@@ -474,11 +487,17 @@ function parseStepDuration(step) {
   return { minutes, label };
 }
 
+const MAX_SERVINGS = 24;
+
 function renderIngredients() {
   const recipe = state.activeRecipe;
   if (!recipe) return;
   const ratio = state.servings / recipe.servings;
   elements.servingsValue.textContent = state.servings;
+  // At the limits the buttons stay focusable but say they are unavailable, and the most is spelled out.
+  elements.servingsUp.setAttribute("aria-disabled", String(state.servings >= MAX_SERVINGS));
+  elements.servingsDown.setAttribute("aria-disabled", String(state.servings <= 1));
+  elements.servingsLimit.textContent = state.servings >= MAX_SERVINGS ? `${MAX_SERVINGS} is the most` : "";
   elements.ingredientList.replaceChildren(...recipe.ingredients.map((ingredient, index) => {
     const item = document.createElement("li");
     const label = document.createElement("label");
@@ -933,7 +952,17 @@ function renderHistory() {
     statBlock(state.history.length, "meals logged"), statBlock(tried, "recipes tried"),
     statBlock(average, "average rating"), statBlock(last30 || repeat, last30 ? "made in 30 days" : "repeat meals"),
   );
+  // Two entries for one recipe on one day get "entry 1 of 2" and "entry 2 of 2" in their Remove names.
+  const sameDay = new Map();
+  for (const entry of state.history) {
+    const key = JSON.stringify([entry.recipeTitle, formatDate(entry.madeAt)]);
+    sameDay.set(key, (sameDay.get(key) || 0) + 1);
+  }
+  const seen = new Map();
   elements.historyList.replaceChildren(...state.history.map((entry) => {
+    const key = JSON.stringify([entry.recipeTitle, formatDate(entry.madeAt)]);
+    seen.set(key, (seen.get(key) || 0) + 1);
+    const which = sameDay.get(key) > 1 ? `, entry ${seen.get(key)} of ${sameDay.get(key)}` : "";
     const row = document.createElement("article");
     row.className = "history-entry";
     const date = document.createElement("time");
@@ -953,8 +982,8 @@ function renderHistory() {
     remove.type = "button";
     remove.className = "button button-quiet history-remove";
     remove.textContent = "Remove";
-    remove.setAttribute("aria-label", `Remove ${entry.recipeTitle} from ${formatDate(entry.madeAt)}`);
-    remove.addEventListener("click", () => removeHistoryEntry(entry));
+    remove.setAttribute("aria-label", `Remove ${entry.recipeTitle} from ${formatDate(entry.madeAt)}${which}`);
+    remove.addEventListener("click", () => removeHistoryEntry(entry, which));
     row.append(date, copy, remove);
     return row;
   }));
@@ -971,8 +1000,8 @@ function statBlock(value, label) {
   return block;
 }
 
-async function removeHistoryEntry(entry) {
-  if (!confirm(`Remove the ${entry.recipeTitle} journal entry from ${formatDate(entry.madeAt)}?`)) return;
+async function removeHistoryEntry(entry, which = "") {
+  if (!confirm(`Remove the ${entry.recipeTitle} journal entry from ${formatDate(entry.madeAt)}${which}?`)) return;
   try {
     await api(`/api/history/${encodeURIComponent(entry.id)}`, { method: "DELETE" });
     const index = state.history.findIndex((item) => item.id === entry.id);
@@ -1154,8 +1183,11 @@ function openScanner() {
   elements.scannerError.textContent = "";
   elements.manualBarcodeInput.value = "";
   state.scannerHandled = false;
+  // The camera works only on HTTPS or localhost; elsewhere the intro says so and points to the other ways.
+  elements.scannerIntro.textContent = window.isSecureContext
+    ? "Point the camera at the barcode, or choose a photo or type the number."
+    : "The camera needs HTTPS or localhost. Choose a photo of the barcode or type the number.";
   elements.scannerDialog.showModal();
-  if (!window.isSecureContext) elements.scannerError.textContent = "Live camera access needs HTTPS or localhost; photo upload and manual entry still work.";
   const Scanner = window.Html5QrcodeScanner;
   if (!Scanner) {
     elements.scannerError.textContent = "The scanner did not load. Type the barcode below.";
@@ -1205,11 +1237,13 @@ function switchView(name, updateHash = true) {
   if (name === "history") renderHistory();
   if (name === "planner") renderPlanner();
   if (name === "shopping") renderShopping();
-  // A control in the view that was just hidden (the hero's "new this month" link) leaves focus
-  // on nothing; give it to the new view's heading instead. Focus that was never on a control
-  // (a fresh load) stays where it is, so the page does not open with a ring round its heading.
+  // A control in the view that was just hidden (the hero's "new this month" link), or focus left
+  // on the page by a dialog that closed first (View journal in a recipe opened from a link), would
+  // leave the keyboard nowhere: give focus to the new view's heading. A fresh load (updateHash
+  // false) leaves focus alone, so the page does not open with a ring round its heading.
   const focused = document.activeElement;
-  if (focused && focused !== document.body && !focused.offsetParent) {
+  const onPage = !focused || focused === document.body;
+  if (onPage ? updateHash : !focused.offsetParent) {
     const heading = document.querySelector(`[data-app-view="${name}"] h1`);
     if (heading) {
       heading.tabIndex = -1;
@@ -1218,110 +1252,6 @@ function switchView(name, updateHash = true) {
   }
   if (updateHash) history.replaceState(null, "", name === "recipes" ? location.pathname : `#view=${name}`);
   window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
-const UNIT_WORDS = new Set([
-  "cup", "cups", "tbsp", "tablespoon", "tablespoons", "tsp", "teaspoon", "teaspoons",
-  "oz", "ounce", "ounces", "lb", "lbs", "pound", "pounds", "g", "gram", "grams",
-  "kg", "kilogram", "kilograms", "mg", "ml", "milliliter", "milliliters", "l", "liter", "liters",
-  "clove", "cloves", "can", "cans", "package", "packages", "pkg", "pinch", "pinches",
-  "dash", "dashes", "slice", "slices", "stick", "sticks", "bunch", "bunches", "sprig", "sprigs",
-  "head", "heads", "stalk", "stalks", "piece", "pieces", "sheet", "sheets", "tray", "trays",
-  "bag", "bags", "box", "boxes", "jar", "jars", "bottle", "bottles", "quart", "quarts",
-  "qt", "pint", "pints", "gallon", "gallons", "inch", "inches", "large", "medium", "small",
-]);
-
-const FRACTION_CHARS = {
-  "¼": "1/4", "½": "1/2", "¾": "3/4", "⅐": "1/7", "⅑": "1/9", "⅒": "1/10",
-  "⅓": "1/3", "⅔": "2/3", "⅕": "1/5", "⅖": "2/5", "⅗": "3/5", "⅘": "4/5",
-  "⅙": "1/6", "⅚": "5/6", "⅛": "1/8", "⅜": "3/8", "⅝": "5/8", "⅞": "7/8",
-};
-
-const RECIPE_META_PATTERN = /^(prep(?:aration)?(?:\s*time)?|cook(?:ing)?(?:\s*time)?|bake(?:\s*time)?|total(?:\s*time)?|serves|servings?|yield|makes)\b\s*:?\s*(.*)$/i;
-
-function normalizeFractions(text) {
-  return String(text).replace(/[¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/g, (char) => ` ${FRACTION_CHARS[char]}`).replace(/\s+/g, " ").trim();
-}
-
-// Turns "1 1/2 cups long-grain rice" into { amount: "1 1/2 cups", item: "long-grain rice" }.
-function parseIngredientLine(line) {
-  const text = normalizeFractions(String(line || "").replace(/^[-•*·▪◦]\s*/, ""));
-  if (!text) return null;
-  const parsed = parseLeadingNumber(text);
-  if (!parsed) return { amount: "", item: text };
-  const words = parsed.rest.trim().split(/\s+/).filter(Boolean);
-  const amountWords = [];
-  while (words.length && UNIT_WORDS.has(words[0].toLowerCase().replace(/[.,;]$/, ""))) amountWords.push(words.shift());
-  return { amount: `${friendlyNumber(parsed.number)}${amountWords.length ? ` ${amountWords.join(" ")}` : ""}`, item: words.join(" ") || text };
-}
-
-function metaMinutes(text) {
-  const hours = String(text).match(/(\d+(?:\.\d+)?)\s*(?:hr|hour)/i);
-  const minutes = String(text).match(/(\d+(?:\.\d+)?)\s*(?:m\b|min)/i);
-  if (!hours && !minutes) return 0;
-  return Math.round((hours ? Number(hours[1]) * 60 : 0) + (minutes ? Number(minutes[1]) : 0));
-}
-
-function cleanStepLine(line) {
-  return String(line).replace(/^\s*(?:step\s*)?\d+\s*[.):-]\s*/i, "").trim();
-}
-
-// "Bake for 20 minutes until bubbling." and "Cook the pasta: 8 to 10 minutes." are steps, not
-// times. A time or yield line has a colon straight after its label ("Bake time: 25 min"), or a
-// short number after it: anywhere for a yield or a "... time" label ("Makes 24 cookies",
-// "Total time 35 min"), and outside the steps for the rest ("Prep 10 min").
-function recipeMetaLine(line, section) {
-  const meta = line.match(RECIPE_META_PATTERN);
-  if (!meta) return null;
-  const labelled = line.slice(meta[1].length).trimStart().startsWith(":");
-  const shortValue = /^(about\s+)?\d/i.test(meta[2]) && meta[2].split(/\s+/).length <= 4;
-  const anySection = /^(serves|servings?|yield|makes)$|time$/i.test(meta[1]);
-  return labelled || (shortValue && (anySection || section !== "steps")) ? meta : null;
-}
-
-// Best-effort parse of a whole pasted recipe into form-ready fields. Handles
-// both sectioned text ("Ingredients:" / "Instructions:") and free-form pastes.
-function parsePastedRecipe(text) {
-  const lines = String(text || "").split(/\r?\n/).map((line) => line.replace(/^[\s\-–—•*·▪◦]+/, "").trim());
-  const recipe = { title: "", summary: "", prepMinutes: 0, cookMinutes: 0, servings: 0, ingredients: [], steps: [] };
-  let section = "intro";
-  let totalMinutes = 0;
-  const summaryParts = [];
-  for (const line of lines) {
-    if (!line) continue;
-    if (/^(ingredients?|what you need|you will need)\s*:?$/i.test(line)) { section = "ingredients"; continue; }
-    if (/^(instructions?|directions?|method|preparation|steps?|what to do)\s*:?$/i.test(line)) { section = "steps"; continue; }
-    const meta = recipeMetaLine(line, section);
-    if (meta) {
-      const label = meta[1].toLowerCase();
-      if (/^(serves|servings?|yield|makes)/.test(label)) {
-        const count = meta[2].match(/\d+/);
-        if (count) recipe.servings = Number(count[0]);
-      } else {
-        const minutes = metaMinutes(meta[2]);
-        if (label.startsWith("prep")) recipe.prepMinutes = minutes || recipe.prepMinutes;
-        else if (label.startsWith("total")) totalMinutes = minutes || totalMinutes;
-        else recipe.cookMinutes = minutes || recipe.cookMinutes;
-      }
-      continue;
-    }
-    if (section === "ingredients") recipe.ingredients.push(line);
-    else if (section === "steps") recipe.steps.push(cleanStepLine(line));
-    else if (!recipe.title) recipe.title = line;
-    else summaryParts.push(line);
-  }
-  if (!recipe.cookMinutes && totalMinutes) recipe.cookMinutes = Math.max(0, totalMinutes - recipe.prepMinutes) || totalMinutes;
-  if (!recipe.ingredients.length && !recipe.steps.length) {
-    // No section headers found: guess ingredients by leading quantities.
-    const body = lines.filter((line) => line && !recipeMetaLine(line, "intro"));
-    recipe.title = body.shift() || recipe.title;
-    for (const line of body) {
-      if (/^[\d¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]/.test(line) && line.length <= 140) recipe.ingredients.push(line);
-      else recipe.steps.push(cleanStepLine(line));
-    }
-    return { ...recipe, summary: "" };
-  }
-  return { ...recipe, summary: summaryParts.join(" ").slice(0, 600) };
 }
 
 function fillRecipeForm(recipe) {
@@ -1777,7 +1707,7 @@ function setupEvents() {
   elements.cookModeButton.addEventListener("click", toggleCookMode);
   elements.favoriteButton.addEventListener("click", () => state.activeRecipe && toggleFavorite(state.activeRecipe.id));
   elements.servingsDown.addEventListener("click", () => { state.servings = Math.max(1, state.servings - 1); renderIngredients(); });
-  elements.servingsUp.addEventListener("click", () => { state.servings = Math.min(24, state.servings + 1); renderIngredients(); });
+  elements.servingsUp.addEventListener("click", () => { state.servings = Math.min(MAX_SERVINGS, state.servings + 1); renderIngredients(); });
   elements.logMadeButton.addEventListener("click", openMadeDialog);
   elements.finishCookingButton.addEventListener("click", () => { closeDialog(elements.recipeDialog); openMadeDialog(); });
   elements.ratingPicker.addEventListener("click", (event) => {

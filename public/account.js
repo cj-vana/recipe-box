@@ -107,7 +107,7 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
     const actingAsOwner = homeNetwork && !signedIn;
     el.settingsInitials.textContent = initials(user.displayName);
     el.settingsName.textContent = user.displayName;
-    el.settingsMeta.textContent = `@${user.username}, ${user.owner ? "owner" : ROLE_LABELS[user.role].toLowerCase()}`;
+    el.settingsMeta.textContent = `@${user.username}, ${ROLE_LABELS[user.role]}`;
     el.settingsAccess.textContent = actingAsOwner
       ? "On your home network Recipe Box opens as the owner, without signing in."
       : `Signed in${homeNetwork ? " on the home network" : ""}.`;
@@ -394,17 +394,20 @@ export function setupAccount({ getSession, setSession, toast, onSignedIn, onSign
       title: `Send ${user.displayName} their sign-in`,
       intro: "Share these details with them. The password is not shown again; you can set a new one later.",
       label: "Sign-in details",
+      wrap: "off",
       text: lines.join("\n"),
     });
   }
 
   // A dialog with text to copy, for when the browser cannot share or use the clipboard.
-  function showText({ title, intro, label, text, rows = 5 }) {
+  // Sign-in details pass wrap "off", so a password never breaks across lines at one of its hyphens.
+  function showText({ title, intro, label, text, rows = 5, wrap = "soft" }) {
     el.shareTitle.textContent = title;
     el.shareIntro.textContent = intro;
     el.shareLabel.textContent = label;
     el.shareText.value = text;
     el.shareText.rows = rows;
+    el.shareText.wrap = wrap;
     el.shareStatus.textContent = "";
     el.shareDialog.showModal();
   }

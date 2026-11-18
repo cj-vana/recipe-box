@@ -339,6 +339,8 @@ dialog { padding: 0; border: 0; background: transparent; color: var(--ink); }
 dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px); }
 .dialog-close { position: absolute; z-index: 4; top: 14px; right: 14px; display: grid; width: 44px; height: 44px; place-items: center; border: 0; border-radius: 50%; background: var(--ink); color: white; font: 300 30px/1 var(--body); cursor: pointer; }
 
+/* The recipe scrolls inside its dialog: a bar with no height, stuck to the top, keeps the close button in view. */
+.dialog-close-bar { position: sticky; z-index: 5; top: 0; height: 0; }
 .recipe-dialog { width: min(1180px, calc(100% - 32px)); max-height: calc(100dvh - 32px); overflow: auto; }
 .recipe-sheet { position: relative; display: grid; grid-template-columns: minmax(280px, .62fr) minmax(0, 1.38fr); min-height: min(820px, calc(100dvh - 32px)); background: var(--paper); box-shadow: var(--shadow); }
 .recipe-cover { position: sticky; top: 0; height: min(820px, calc(100dvh - 32px)); overflow: hidden; background: var(--green); }
@@ -356,6 +358,8 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
 .serving-control { display: inline-flex; align-items: center; gap: 10px; margin: 0 0 20px; color: var(--muted); font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .serving-control button { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid var(--rule); border-radius: 50%; background: var(--cream); font-size: 18px; cursor: pointer; }
 .serving-control strong { min-width: 24px; color: var(--ink); font-size: 17px; text-align: center; }
+.serving-control button[aria-disabled="true"] { opacity: .4; cursor: not-allowed; }
+.serving-limit { color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none; }
 .recipe-columns { display: grid; grid-template-columns: minmax(240px, .9fr) minmax(300px, 1.1fr); gap: clamp(28px, 4vw, 52px); }
 .recipe-columns h3, .settings-sheet h3 { padding-bottom: 10px; border-bottom: 1px solid var(--ink); font-family: var(--display); font-size: 25px; font-weight: 500; }
 
@@ -663,8 +667,10 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
   .cook-nav-button { padding: 10px 14px; font-size: 13px; }
   /* Between Back and Next the chip has about 129 px; '15 to 18 min' needs 121 px with this padding. */
   .cook-step-bar .step-timer-chip { padding-right: 10px; padding-left: 10px; white-space: nowrap; }
-  .detail-actions { position: sticky; z-index: 3; top: 0; margin-right: -20px; margin-left: -20px; padding: 10px 20px; background: rgba(242,234,216,.96); backdrop-filter: blur(10px); }
-  .detail-actions .button { flex: 1; padding-right: 8px; padding-left: 8px; font-size: 12px; }
+  /* The pinned action row leaves room on its right for the recipe's close button, which stays at the top. */
+  .detail-actions { position: sticky; z-index: 3; top: 0; gap: 8px; margin-right: -20px; margin-left: -20px; padding: 10px 66px 10px 20px; background: rgba(242,234,216,.96); backdrop-filter: blur(10px); }
+  .detail-actions .button { flex: 1 1 auto; padding-right: 6px; padding-left: 6px; font-size: 12px; }
+  .dialog-close-bar .dialog-close { top: 10px; }
   .recipe-dialog.cook-mode .detail-actions { position: static; margin: 0 0 24px; padding: 0; background: none; }
   .recipe-utilities { gap: 0 16px; }
   .quick-timer-form { grid-template-columns: 1fr 80px; }

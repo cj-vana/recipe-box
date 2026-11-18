@@ -176,15 +176,15 @@
     <footer><p>Recipe Box</p><p>Self-hosted. Your recipes stay on your own server.</p></footer>
 
     <dialog class="recipe-dialog" id="recipeDialog" aria-labelledby="detailTitle">
+      <div class="dialog-close-bar"><button class="dialog-close" data-close="recipeDialog" type="button" aria-label="Close recipe">&times;</button></div>
       <article class="recipe-sheet">
-        <button class="dialog-close" data-close="recipeDialog" type="button" aria-label="Close recipe">&times;</button>
         <div class="recipe-cover"><img id="detailImage" alt=""></div>
         <div class="recipe-content">
           <p class="eyebrow" id="detailKicker"></p>
           <h2 id="detailTitle"></h2>
           <p class="detail-summary" id="detailSummary"></p>
           <div class="recipe-facts" id="detailFacts"></div>
-          <div class="serving-control" role="group" aria-label="Servings"><span>Servings</span><button id="servingsDown" type="button" aria-label="Fewer servings">&minus;</button><strong id="servingsValue" aria-live="polite">3</strong><button id="servingsUp" type="button" aria-label="More servings">+</button></div>
+          <div class="serving-control" role="group" aria-label="Servings"><span>Servings</span><button id="servingsDown" type="button" aria-label="Fewer servings">&minus;</button><strong id="servingsValue" aria-live="polite">3</strong><button id="servingsUp" type="button" aria-label="More servings">+</button><small class="serving-limit" id="servingsLimit" aria-live="polite"></small></div>
           <div class="detail-actions"><button class="button button-red" id="cookModeButton" type="button">Start Cook Mode</button><button class="button button-ink" id="logMadeButton" type="button">I made this</button><button class="button button-quiet" id="favoriteButton" type="button" aria-pressed="false">Favorite</button></div>
           <div class="recipe-utilities"><button id="addIngredientsButton" type="button">+ Shopping list</button><button id="planRecipeButton" type="button">+ Meal plan</button><button id="shareRecipeButton" type="button">Share</button><button id="printRecipeButton" type="button">Print</button><button id="editRecipeButton" type="button" data-requires="editor" hidden>Edit recipe</button></div>
           <section class="cook-console" id="cookConsole" hidden>
@@ -284,7 +284,7 @@
       <section class="form-sheet">
         <button class="dialog-close" data-close="scannerDialog" type="button" aria-label="Close scanner">&times;</button>
         <h2 id="scannerTitle">Scan a barcode</h2>
-        <p class="form-intro">The camera needs HTTPS or localhost. You can also choose a photo or type the number.</p>
+        <p class="form-intro" id="scannerIntro">The camera needs HTTPS or localhost. Choose a photo of the barcode or type the number.</p>
         <div id="barcodeReader"></div>
         <form class="manual-barcode" id="manualBarcodeForm"><label class="field">Barcode number<input id="manualBarcodeInput" inputmode="numeric" autocomplete="off" required></label><button class="button button-red" type="submit">Use barcode</button></form>
         <p class="form-error" id="scannerError" role="alert"></p>
