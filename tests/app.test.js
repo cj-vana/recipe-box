@@ -30,7 +30,7 @@ test("serves the Recipe Box PWA shell and health endpoint", async () => {
   const manifest = await fetch(`${baseUrl}/manifest.webmanifest`);
   assert.equal(manifest.headers.get("content-type"), "application/manifest+json; charset=utf-8");
   const health = await fetch(`${baseUrl}/api/health`).then((response) => response.json());
-  assert.deepEqual({ status: health.status, recipes: health.recipes, version: health.version }, { status: "ok", recipes: 13, version: "2.1.0" });
+  assert.deepEqual({ status: health.status, recipes: health.recipes, version: health.version }, { status: "ok", recipes: 13, version: "3.0.2" });
 });
 
 test("lists normal recipes with finished-dish images and filters them", async () => {
@@ -51,7 +51,7 @@ test("serves a unique generated image for every seeded recipe", async () => {
   assert.equal(responses.every((response) => response.status === 200 && response.headers.get("content-type") === "image/webp"), true);
 });
 
-test("allows changes directly from the private network without a key", async () => {
+test("lets the Owner change recipes from the home network without signing in", async () => {
   const recipe = { title: "Test Soup", ingredients: [{ amount: "1 cup", item: "broth" }], steps: ["Warm the broth."] };
   const allowed = await fetch(`${baseUrl}/api/recipes`, { method: "POST", headers: jsonHeaders, body: JSON.stringify(recipe) });
   assert.equal(allowed.status, 201);
@@ -145,4 +145,56 @@ test("rejects bad recipe import URLs", async () => {
   assert.equal(missing.status, 400);
   const scheme = await fetch(`${baseUrl}/api/recipes/import?url=${encodeURIComponent("ftp://example.com/x")}`);
   assert.equal(scheme.status, 400);
+});
+
+test("a failed import or product lookup answers its own reason, not a generic error", async () => {
+  const origin = createServer((request, response) => {
+    response.statusCode = 404;
+    response.end("gone");
+  });
+  await new Promise((resolve) => origin.listen(0, "127.0.0.1", resolve));
+  try {
+    const originUrl = `http://127.0.0.1:${origin.address().port}/missing`;
+    const failed = await fetch(`${baseUrl}/api/recipes/import?url=${encodeURIComponent(originUrl)}`);
+    assert.equal(failed.status, 502);
+    assert.deepEqual(await failed.json(), { error: "That page responded with 404." });
+  } finally {
+    await new Promise((resolve) => origin.close(resolve));
+  }
+
+  // Open Food Facts is replaced for this test only; every other request still goes out.
+  const realFetch = globalThis.fetch;
+  let lookupFailure = null;
+  globalThis.fetch = (url, options) => (String(url).startsWith("https://world.openfoodfacts.org/")
+    ? Promise.reject(lookupFailure)
+    : realFetch(url, options));
+  try {
+    lookupFailure = Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
+    const slow = await realFetch(`${baseUrl}/api/products/3017620422003`);
+    assert.equal(slow.status, 504);
+    assert.deepEqual(await slow.json(), { error: "Product lookup timed out." });
+    lookupFailure = new TypeError("fetch failed");
+    const unreachable = await realFetch(`${baseUrl}/api/products/3017620422003`);
+    assert.equal(unreachable.status, 502);
+    assert.deepEqual(await unreachable.json(), { error: "Product lookup is unavailable right now." });
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("an unexpected failure still answers a generic message", async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), "recipe-box-test-"));
+  const app = await createApp({ dataFile: path.join(dir, "recipes.json") });
+  app.store.getProfile = () => {
+    throw new Error("a detail about the disk that must stay on the server");
+  };
+  await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
+  try {
+    const broken = await fetch(`http://127.0.0.1:${app.server.address().port}/api/profile`);
+    assert.equal(broken.status, 500);
+    assert.deepEqual(await broken.json(), { error: "Unexpected server error." });
+  } finally {
+    await new Promise((resolve) => app.server.close(resolve));
+    await rm(dir, { recursive: true, force: true });
+  }
 });

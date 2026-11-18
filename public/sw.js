@@ -1,11 +1,17 @@
-const STATIC_CACHE = "recipe-box-static-v11";
-const DATA_CACHE = "recipe-box-data-v11";
+const STATIC_CACHE = "recipe-box-static-v14";
+const DATA_CACHE = "recipe-box-data-v14";
 const APP_SHELL = [
   "/",
   "/index.html",
   "/styles.css",
   "/app.js",
   "/amounts.js",
+  "/api.js",
+  "/account.js",
+  "/meal-plan.js",
+  "/new-this-month.js",
+  "/passphrase.js",
+  "/paste.js",
   "/vendor/html5-qrcode-2.3.8.min.js",
   "/manifest.webmanifest",
   "/icons/icon.svg",
@@ -27,28 +33,42 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-async function networkFirst(request) {
+function offlineResponse() {
+  return new Response(JSON.stringify({ error: "Offline and not yet cached." }), {
+    status: 503,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+// The shared recipe list is cached for offline use. Everything else under /api/ belongs to
+// one person, so it is never cached here: the page keeps its own copy per person and clears
+// it on sign-out.
+async function networkFirstShared(request) {
   const cache = await caches.open(DATA_CACHE);
   try {
     const response = await fetch(request);
-    if (response.ok && request.method === "GET") cache.put(request, response.clone());
+    if (response.ok) cache.put(request, response.clone());
     return response;
   } catch {
-    return await cache.match(request) || new Response(JSON.stringify({ error: "Offline and not yet cached." }), {
-      status: 503,
-      headers: { "content-type": "application/json" },
-    });
+    return await cache.match(request) || offlineResponse();
   }
 }
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/api/") && event.request.method === "GET") {
-    event.respondWith(networkFirst(event.request));
+  if (url.pathname.startsWith("/api/") || url.pathname === "/mcp") {
+    if (event.request.method !== "GET") return;
+    if (url.pathname === "/api/recipes") event.respondWith(networkFirstShared(event.request));
+    else event.respondWith(fetch(event.request).catch(offlineResponse));
     return;
   }
   if (event.request.method !== "GET") return;
+  // Pages are fetched fresh when online so a new version shows up on the next load.
+  if (event.request.mode === "navigate") {
+    event.respondWith(fetch(event.request).catch(() => caches.match("/index.html")));
+    return;
+  }
   event.respondWith(
     caches.match(event.request).then((cached) => cached || fetch(event.request).then((response) => {
       if (response.ok && /\.(?:webp|png|svg)$/.test(url.pathname)) {
