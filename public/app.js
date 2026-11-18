@@ -612,6 +612,7 @@ function openRecipe(recipe, updateHash = true) {
   elements.recipeDialog.classList.remove("cook-mode");
   elements.cookConsole.hidden = true;
   elements.cookStepBar.hidden = true;
+  returnTimerDock();
   elements.cookModeButton.textContent = "Start Cook Mode";
   elements.timerNameInput.value = `${recipe.title} timer`;
   elements.timerMinutesInput.value = Math.max(1, recipe.cookMinutes || 10);
@@ -631,6 +632,7 @@ async function toggleCookMode() {
     updateCookStepUI();
   } else {
     [...elements.stepList.children].forEach((item) => item.classList.remove("current"));
+    returnTimerDock();
   }
   if (enabled && "wakeLock" in navigator) {
     try { state.wakeLock = await navigator.wakeLock.request("screen"); } catch { /* Wake lock is optional. */ }
@@ -1487,6 +1489,7 @@ function closeDialog(dialog) {
     elements.recipeDialog.classList.remove("cook-mode");
     elements.cookConsole.hidden = true;
     elements.cookStepBar.hidden = true;
+    returnTimerDock();
     [...elements.stepList.children].forEach((item) => item.classList.remove("current"));
     if (state.wakeLock) state.wakeLock.release().catch(() => {});
     state.wakeLock = null;
@@ -1512,12 +1515,45 @@ function saveTimers() {
   writeLocal(STORAGE.timers, state.timers);
 }
 
+function inCookMode() {
+  return elements.recipeDialog.open && elements.recipeDialog.classList.contains("cook-mode");
+}
+
+// Outside Cook Mode the Timers panel is a modal over the page. In Cook Mode it sits above the step
+// bar without blocking the recipe, so Back, Next and Finish stay in reach while it counts down.
 function showTimerDock() {
-  if (!elements.timerDock.open) elements.timerDock.showModal();
+  const dock = elements.timerDock;
+  if (inCookMode()) {
+    if (dock.parentElement !== elements.cookStepBar) {
+      if (dock.open) dock.close();
+      elements.cookStepBar.append(dock);
+    }
+    if (!dock.open) {
+      const working = document.activeElement;
+      dock.show();
+      // show() moves focus into the panel; leave it where the cook was working.
+      if (working && working !== document.body && working.isConnected) working.focus({ preventScroll: true });
+    }
+    return;
+  }
+  returnTimerDock();
+  if (!dock.open) dock.showModal();
+}
+
+// When Cook Mode ends, the panel goes back to the page, closed.
+function returnTimerDock() {
+  const dock = elements.timerDock;
+  if (dock.parentElement !== elements.cookStepBar) return;
+  if (dock.open) dock.close();
+  elements.toast.before(dock);
 }
 
 function hideTimerDock() {
-  if (elements.timerDock.open) elements.timerDock.close();
+  const dock = elements.timerDock;
+  const hadFocus = dock.contains(document.activeElement);
+  if (dock.open) dock.close();
+  // In Cook Mode the panel's own button had focus: hand it back to the step bar.
+  if (hadFocus && dock.parentElement === elements.cookStepBar) elements.cookNextButton.focus();
 }
 
 async function announceTimer(timer) {
@@ -1799,6 +1835,14 @@ function setupEvents() {
 
   elements.timerButton.addEventListener("click", showTimerDock);
   elements.closeTimerDock.addEventListener("click", hideTimerDock);
+  // In Cook Mode the Timers panel is an open non-modal dialog inside the recipe, and browsers then
+  // differ in where Escape goes (Chrome gives it to the panel, which ignores it). Handle it here:
+  // Escape hides the panel first, and with the panel hidden it closes the recipe as usual.
+  elements.recipeDialog.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !elements.timerDock.open || elements.timerDock.parentElement !== elements.cookStepBar) return;
+    event.preventDefault();
+    hideTimerDock();
+  });
   elements.timerList.addEventListener("click", timerAction);
   elements.dockTimerForm.addEventListener("submit", (event) => { event.preventDefault(); startTimer(elements.dockTimerName.value, elements.dockTimerMinutes.value); });
 

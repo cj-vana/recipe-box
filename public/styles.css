@@ -571,6 +571,12 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
 /* Timers and toast */
 .timer-dock { position: fixed; z-index: 90; top: auto; right: 20px; bottom: 20px; left: auto; width: min(390px, calc(100% - 40px)); max-height: min(620px, calc(100dvh - 40px)); margin: 0; padding: 24px; overflow: auto; border: 0; background: var(--ink); color: var(--cream); box-shadow: 0 25px 80px rgba(31,27,21,.35); }
 .timer-dock::backdrop { background: rgba(31,27,21,.28); backdrop-filter: none; }
+/* In Cook Mode the panel sits on the step bar, above it rather than over it, and leaves the recipe usable. */
+.cook-step-bar > .timer-dock { position: absolute; z-index: 1; top: auto; right: 12px; bottom: calc(100% + 10px); left: auto; width: min(340px, calc(100% - 24px)); max-height: min(400px, 50dvh); padding: 18px 20px; }
+/* Specific enough to beat Cook Mode's own heading size, which reaches the panel inside the recipe. */
+.recipe-dialog.cook-mode .cook-step-bar > .timer-dock h2 { padding-right: 0; font-size: 28px; }
+/* Cook Mode has its own timer form above the steps, so the panel shows only the running timers. */
+.cook-step-bar > .timer-dock .dock-timer-form { display: none; }
 .timer-dock header { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
 .timer-dock h2 { margin: 0; font: 500 36px var(--display); }
 .timer-dock header button { width: 44px; height: 44px; border: 0; background: transparent; color: white; font-size: 28px; cursor: pointer; }
@@ -579,7 +585,7 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
 .timer-row time { color: var(--mustard); font: 500 28px/1 var(--display); }
 .timer-row.expired { animation: timerPulse 1s infinite alternate; }
 .timer-row-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
-.timer-row-actions button { min-height: 36px; padding: 4px 12px; border: 1px solid rgba(255,255,255,.3); background: transparent; color: white; font-size: 13px; cursor: pointer; }
+.timer-row-actions button { min-height: 44px; padding: 4px 12px; border: 1px solid rgba(255,255,255,.3); background: transparent; color: white; font-size: 13px; cursor: pointer; }
 @keyframes timerPulse { to { background: rgba(173,62,47,.35); } }
 .dock-timer-form { display: grid; grid-template-columns: 1fr 70px auto; gap: 6px; margin-top: 18px; }
 .dock-timer-form input, .dock-timer-form button { min-width: 0; min-height: 44px; padding: 9px; border: 1px solid rgba(255,255,255,.3); background: rgba(255,255,255,.08); color: white; }
@@ -710,6 +716,7 @@ dialog::backdrop { background: rgba(31, 27, 21, 0.76); backdrop-filter: blur(7px
   .barcode-entry .field { grid-column: 1 / -1; }
   .manual-barcode { grid-template-columns: 1fr; }
   .timer-dock { right: 0; bottom: 0; width: 100%; max-height: 82dvh; }
+  .cook-step-bar > .timer-dock { right: 8px; left: 8px; width: auto; max-height: 50dvh; }
   .dock-timer-form { grid-template-columns: 1fr 64px auto; }
   .toast { right: 14px; bottom: calc(14px + env(safe-area-inset-bottom)); left: 14px; max-width: none; }
   .sign-in { grid-template-columns: 1fr; grid-template-rows: 26dvh auto; }
